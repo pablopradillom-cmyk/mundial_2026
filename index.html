@@ -143,8 +143,22 @@ body{background:var(--black);color:var(--text);font-family:var(--fb);}
     <div class="card">
       <div class="section-title">⚽ Goleadores</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem">
-        <div><div class="admin-label">Máximo goleador mundial (bonus 10pts)</div><input id="top-scorer-name" placeholder="Nombre" style="width:100%;padding:6px 10px;background:var(--dark3);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:13px"></div>
-        <div><div class="admin-label">Máximo goleador español (bonus 10pts)</div><input id="esp-scorer-name" placeholder="Nombre" style="width:100%;padding:6px 10px;background:var(--dark3);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:13px"></div>
+        <div><div class="admin-label">⚽ Máximo goleador mundial</div>
+          <select id="top-scorer-name" style="width:100%;padding:6px 10px;background:var(--dark3);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:13px">
+            <option value="">— Elige jugador —</option>
+          </select></div>
+        <div><div class="admin-label">🇪🇸 Máximo goleador español</div>
+          <select id="esp-scorer-name" style="width:100%;padding:6px 10px;background:var(--dark3);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:13px">
+            <option value="">— Elige jugador —</option>
+          </select></div>
+        <div><div class="admin-label">🏅 MVP del torneo</div>
+          <select id="mvp-name" style="width:100%;padding:6px 10px;background:var(--dark3);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:13px">
+            <option value="">— Elige jugador —</option>
+          </select></div>
+        <div><div class="admin-label">🧤 Mejor portero</div>
+          <select id="gk-name" style="width:100%;padding:6px 10px;background:var(--dark3);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:13px">
+            <option value="">— Elige portero —</option>
+          </select></div>
       </div>
       <div class="admin-label">Goles por jugador elegido (+1pt/gol)</div>
       <div id="player-goals-wrap" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px;margin-bottom:1rem"></div>
@@ -181,28 +195,75 @@ const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 const supa=supabase.createClient(SUPA_URL,SUPA_KEY);
 let saveTimer=null,S={};
 
+// Deep merge: server data wins for results/settings, but ALL users/quinelas are preserved
+function mergeStates(local, server) {
+  var merged = JSON.parse(JSON.stringify(server)); // start from server
+  // Merge users: keep ALL users from both
+  merged.users = Object.assign({}, local.users||{}, server.users||{});
+  // Admin user always from server (authoritative)
+  if(server.users&&server.users['pablo']) merged.users['pablo'] = server.users['pablo'];
+  // Merge quinelas: keep ALL quinelas from both, server wins on conflicts
+  merged.quinelas = Object.assign({}, local.quinelas||{}, server.quinelas||{});
+  // Results and settings: server always wins (admin sets these)
+  merged.results = server.results || local.results || {};
+  merged.settings = server.settings || local.settings || {};
+  merged.scorers = server.scorers || local.scorers || {};
+  return merged;
+}
+
 function saveState(){
   localStorage.setItem('mundial2026',JSON.stringify(S));
   clearTimeout(saveTimer);
   saveTimer=setTimeout(function(){
-    supa.from('gamestate').upsert({id:'mundial2026',data:S,updated_at:new Date().toISOString()})
+    // Read current server state first, then merge, then save
+    // This prevents overwriting other users' data
+    supa.from('gamestate').select('data').eq('id','mundial2026').single()
+      .then(function(r){
+        var toSave = S;
+        if(!r.error && r.data && r.data.data && Object.keys(r.data.data).length>0){
+          toSave = mergeStates(S, r.data.data);
+          // After merge, update local S with merged version
+          S = toSave;
+          localStorage.setItem('mundial2026',JSON.stringify(S));
+        }
+        return supa.from('gamestate').upsert({id:'mundial2026',data:toSave,updated_at:new Date().toISOString()});
+      })
       .then(function(r){showSyncStatus(!r.error);})
-      .catch(function(){showSyncStatus(false);});
+      .catch(function(){
+        // Fallback: save without merge if read fails
+        supa.from('gamestate').upsert({id:'mundial2026',data:S,updated_at:new Date().toISOString()})
+          .then(function(r){showSyncStatus(!r.error);})
+          .catch(function(){showSyncStatus(false);});
+      });
   },800);
 }
 
 function loadState(){
   return supa.from('gamestate').select('data').eq('id','mundial2026').single()
     .then(function(r){
+      var local = {};
+      try{local=JSON.parse(localStorage.getItem('mundial2026')||'{}');}catch(e){local={};}
       if(!r.error&&r.data&&r.data.data&&Object.keys(r.data.data).length>0){
-        S=r.data.data;
+        // Merge server + local (server wins on conflicts)
+        S = mergeStates(local, r.data.data);
         localStorage.setItem('mundial2026',JSON.stringify(S));
         showSyncStatus(true);
+        // If local had extra data (users/quinelas not in server), save merged back
+        var serverUsers = Object.keys(r.data.data.users||{}).length;
+        var mergedUsers = Object.keys(S.users||{}).length;
+        if(mergedUsers > serverUsers){
+          supa.from('gamestate').upsert({id:'mundial2026',data:S,updated_at:new Date().toISOString()}).then(function(){});
+        }
       } else {
-        try{S=JSON.parse(localStorage.getItem('mundial2026')||'{}');}catch(e){S={};}
-        if(Object.keys(S).length>0) supa.from('gamestate').upsert({id:'mundial2026',data:S}).then(function(){});
+        S = Object.keys(local).length > 0 ? local : {};
+        if(Object.keys(S).length>0){
+          supa.from('gamestate').upsert({id:'mundial2026',data:S,updated_at:new Date().toISOString()}).then(function(){});
+        }
+        showSyncStatus(false);
       }
       initState();
+      // Auto-backup every time we load successfully
+      autoBackup();
     })
     .catch(function(){
       try{S=JSON.parse(localStorage.getItem('mundial2026')||'{}');}catch(e){S={};}
@@ -210,6 +271,18 @@ function loadState(){
       showSyncStatus(false);
     });
 }
+
+// Auto-backup: save a copy with timestamp in localStorage (last 3 backups)
+function autoBackup(){
+  try{
+    var backups = JSON.parse(localStorage.getItem('mundial2026_backups')||'[]');
+    var now = new Date().toISOString();
+    backups.unshift({ts:now, data:JSON.parse(JSON.stringify(S))});
+    if(backups.length > 3) backups = backups.slice(0,3);
+    localStorage.setItem('mundial2026_backups', JSON.stringify(backups));
+  }catch(e){}
+}
+
 
 function initState(){
   if(!S.users) S.users={};
@@ -228,7 +301,8 @@ function startRealtimeSync(){
   supa.channel('mundial-ch')
     .on('postgres_changes',{event:'UPDATE',schema:'public',table:'gamestate',filter:'id=eq.mundial2026'},function(p){
       if(!p.new||!p.new.data) return;
-      S=p.new.data;
+      // Merge incoming server data with current local state
+      S = mergeStates(S, p.new.data);
       localStorage.setItem('mundial2026',JSON.stringify(S));
       var t=document.querySelector('.tab-page.active');
       if(t){
@@ -824,6 +898,80 @@ function teamById(id){
   return t||{id:id,n:id,f:'🏳️'};
 }
 
+
+// ── PLAYER LISTS ─────────────────────────────────────────
+var WORLD_PLAYERS=[
+  'Kylian Mbappé','Erling Haaland','Vinicius Jr.','Lamine Yamal','Pedri',
+  'Lionel Messi','Cristiano Ronaldo','Neymar Jr.','Marcus Rashford',
+  'Phil Foden','Bukayo Saka','Harry Kane','Jude Bellingham','Trent Alexander-Arnold',
+  'Gavi','Fermín López','Dani Olmo','Rodri','Alphonso Davies',
+  'Julián Álvarez','Lautaro Martínez','Nico Williams','Raphinha','Rodrygo',
+  'Florian Wirtz','Jamal Musiala','Leroy Sané','Kai Havertz','Thomas Müller',
+  'Antoine Griezmann','Ousmane Dembélé','Marcus Thuram','Randal Kolo Muani',
+  'Rafael Leão','Bernardo Silva','Rúben Neves','Bruno Fernandes',
+  'Cody Gakpo','Xavi Simons','Virgil van Dijk','Memphis Depay',
+  'Son Heung-min','Mohamed Salah','Sadio Mané','Victor Osimhen',
+  'Riyad Mahrez','Ivan Toney','Takefusa Kubo','Kaoru Mitoma',
+  'Paulo Dybala','Rodrigo De Paul','Enzo Fernández','Alexis Mac Allister',
+  'Darwin Núñez','Federico Valverde','Facundo Torres','Luis Suárez',
+  'Roberto Firmino','Gabriel Martinelli','Endrick','Igor Jesus',
+  'Achraf Hakimi','Sofyan Amrabat','Yassine Bounou',
+  'Christian Pulisic','Gio Reyna','Tyler Adams','Weston McKennie',
+  'Giovanni Simeone','Hirving Lozano','Guillermo Ochoa',
+  'Rasmus Hojlund','Martin Odegaard','Alexander Isak',
+  'Robert Lewandowski','Piotr Zielinski'
+].sort();
+
+var ESP_PLAYERS=[
+  'Lamine Yamal','Nico Williams','Pedri','Gavi','Dani Olmo',
+  'Fermín López','Álvaro Morata','Mikel Oyarzabal','Rodri',
+  'Fabián Ruiz','Marco Asensio','Joselu','Ayoze Pérez',
+  'Ansu Fati','Yerlan Jesé','Samu Omorodion','Abel Ruiz',
+  'Aymeric Laporte','Robin Le Normand','Pau Cubarsí','Dani Vivian',
+  'Alejandro Grimaldo','Marc Cucurella','Jesús Navas',
+  'Unai Simón','David Raya','Álex Remiro',
+  'Martín Zubimendi','Mikel Merino','Dani Ceballos',
+  'Bryan Gil','Yeremy Pino','Nico Paz','Álex Baena',
+  'Jon Pacheco','Borja Iglesias'
+].sort();
+
+var MVP_PLAYERS=[
+  'Kylian Mbappé','Erling Haaland','Vinicius Jr.','Lamine Yamal',
+  'Lionel Messi','Jude Bellingham','Phil Foden','Bukayo Saka',
+  'Pedri','Gavi','Rodri','Dani Olmo','Nico Williams',
+  'Florian Wirtz','Jamal Musiala','Julián Álvarez','Lautaro Martínez',
+  'Rafael Leão','Bruno Fernandes','Antoine Griezmann',
+  'Son Heung-min','Cody Gakpo','Xavi Simons',
+  'Alexis Mac Allister','Federico Valverde','Darwin Núñez',
+  'Christian Pulisic','Marcus Rashford','Harry Kane',
+  'Gio Reyna','Fermín López','Bernardo Silva'
+].sort();
+
+var GK_PLAYERS=[
+  'Unai Simón','David Raya','Álex Remiro',
+  'Mike Maignan','Alisson Becker','Ederson',
+  'Manuel Neuer','Marc-André ter Stegen','Oliver Baumann',
+  'Gianluigi Donnarumma','Andriy Lunin','Thibaut Courtois',
+  'Jordan Pickford','Dean Henderson','Aaron Ramsdale',
+  'Gregor Kobel','Yann Sommer','Guillermo Ochoa',
+  'Yassine Bounou','Ronwen Williams','Matt Turner',
+  'Altay Bayındır','Mert Günok','Ugurcan Cakir',
+  'Kim Seung-gyu','Jo Hyeon-woo','Eiji Kawashima',
+  'Diogo Costa','Rui Patrício','Anthony Lopes',
+  'Emiliano Martínez','Franco Armani',
+  'Fernando Muslera','Sergio Rochet'
+].sort();
+
+function makeSelect(id, options, value, onchangeFn, placeholder) {
+  var html = '<select id="'+id+'" onchange="'+onchangeFn+'" style="width:100%;padding:8px;background:var(--dark2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:13px">';
+  html += '<option value="">'+placeholder+'</option>';
+  options.forEach(function(p){
+    html += '<option value="'+p+'"'+(p.toLowerCase()===value.toLowerCase()?' selected':'')+'>'+p+'</option>';
+  });
+  html += '</select>';
+  return html;
+}
+
 // ── GROUP HELPERS ─────────────────────────────────────────
 function getGroupOrdered(gid,uid){
   var grp=GROUPS.filter(function(g){return g.id===gid;})[0];
@@ -889,7 +1037,7 @@ function calcScore(uid){
   var total=0;
   var bd={};
 
-  // Groups: 1pt per correct team reaching R32
+  // Groups (16avos): 1pt per correct team
   var r16actual=(res.groups&&res.groups.qualified)||[];
   var pred=[];
   GROUPS.forEach(function(g){
@@ -902,20 +1050,34 @@ function calcScore(uid){
   bd.groups={pts:r16hits};
   total+=r16hits;
 
-  // Bracket: pts per match winner correctly predicted
+  // Bracket: 16avos=1, octavos=2, cuartos=4, semis=8, subcampeon=8, campeon=10
   var bp=q.bracket||{};
   var br=(res.bracket)||{};
   var bTotal=0;
-  var roundPts={m73:1,m74:1,m75:1,m76:1,m77:1,m78:1,m79:1,m80:1,m81:1,m82:1,m83:1,m84:1,m85:1,m86:1,m87:1,m88:1,m89:2,m90:2,m91:2,m92:2,m93:2,m94:2,m95:2,m96:2,m97:4,m98:4,m99:4,m100:4,m101:8,m102:8,m103:10};
+  var roundPts={
+    m73:1,m74:1,m75:1,m76:1,m77:1,m78:1,m79:1,m80:1,
+    m81:1,m82:1,m83:1,m84:1,m85:1,m86:1,m87:1,m88:1,
+    m89:2,m90:2,m91:2,m92:2,m93:2,m94:2,m95:2,m96:2,
+    m97:4,m98:4,m99:4,m100:4,
+    m101:8,m102:8,
+    m103:10
+  };
   Object.keys(br).forEach(function(mid){
     var correct=br[mid];
     if(!correct) return;
     var pick=bp[mid];
-    if(pick&&pick===correct){
-      bTotal+=(roundPts[mid]||0);
-    }
+    if(pick&&pick===correct) bTotal+=(roundPts[mid]||0);
   });
-  bd.bracket={pts:bTotal};
+  // Subcampeón: +8 if user's predicted finalist (the one who lost the final) matches real finalist
+  var realChampion=br['m103'];
+  var realSF1winner=br['m101'], realSF2winner=br['m102'];
+  var realSubcampeon=realChampion?(realChampion===realSF1winner?realSF2winner:realSF1winner):null;
+  var userChampion=bp['m103'];
+  var userSF1winner=bp['m101'], userSF2winner=bp['m102'];
+  var userSubcampeon=userChampion?(userChampion===userSF1winner?userSF2winner:userSF1winner):null;
+  var subcampeonPts=(realSubcampeon&&userSubcampeon&&realSubcampeon===userSubcampeon)?8:0;
+  bTotal+=subcampeonPts;
+  bd.bracket={pts:bTotal,subcampeonPts:subcampeonPts};
   total+=bTotal;
 
   // Scorers
@@ -924,14 +1086,28 @@ function calcScore(uid){
   var ep=(q.espScorer||'').toLowerCase().trim();
   var pg=(sc.playerGoals)||{};
   var wg=wp?(pg[wp]||0):0;
-  var eg=ep?(pg[ep]||0):0;
+  var eg=ep?(pg[eg]||0):0;
   var wm=(sc.world&&sc.world.name||'').toLowerCase().trim();
   var em=(sc.spain&&sc.spain.name||'').toLowerCase().trim();
   var wb=(wm&&wp===wm)?10:0;
   var eb=(em&&ep===em)?10:0;
-  bd.topScorer={pts:wb+wg};
-  bd.espScorer={pts:eb+eg};
+  bd.topScorer={pts:wb+wg,bonus:wb,goals:wg};
+  bd.espScorer={pts:eb+eg,bonus:eb,goals:eg};
   total+=wb+wg+eb+eg;
+
+  // MVP
+  var mvpPick=(q.mvp||'').toLowerCase().trim();
+  var mvpActual=(sc.mvp||'').toLowerCase().trim();
+  var mvpPts=(mvpActual&&mvpPick===mvpActual)?10:0;
+  bd.mvp={pts:mvpPts};
+  total+=mvpPts;
+
+  // Mejor portero
+  var gkPick=(q.goalkeeper||'').toLowerCase().trim();
+  var gkActual=(sc.goalkeeper||'').toLowerCase().trim();
+  var gkPts=(gkActual&&gkPick===gkActual)?10:0;
+  bd.goalkeeper={pts:gkPts};
+  total+=gkPts;
 
   return {total:Math.round(total*100)/100,breakdown:bd};
 }
@@ -1034,10 +1210,12 @@ function renderStandings(){
   var sc=getAllScores();
   document.getElementById('standings-pills').innerHTML=
     '<button class="round-pill '+(sfilt==='all'?'active':'')+'" onclick="setSF(\'all\')">General</button>'+
-    '<button class="round-pill '+(sfilt==='groups'?'active':'')+'" onclick="setSF(\'groups\')">Grupos</button>'+
+    '<button class="round-pill '+(sfilt==='groups'?'active':'')+'" onclick="setSF(\'groups\')">16avos</button>'+
     '<button class="round-pill '+(sfilt==='bracket'?'active':'')+'" onclick="setSF(\'bracket\')">Bracket</button>'+
-    '<button class="round-pill '+(sfilt==='topScorer'?'active':'')+'" onclick="setSF(\'topScorer\')">Goleador Mundial</button>'+
-    '<button class="round-pill '+(sfilt==='espScorer'?'active':'')+'" onclick="setSF(\'espScorer\')">Goleador España</button>';
+    '<button class="round-pill '+(sfilt==='topScorer'?'active':'')+'" onclick="setSF(\'topScorer\')">Gol. Mundial</button>'+
+    '<button class="round-pill '+(sfilt==='espScorer'?'active':'')+'" onclick="setSF(\'espScorer\')">Gol. España</button>'+
+    '<button class="round-pill '+(sfilt==='mvp'?'active':'')+'" onclick="setSF(\'mvp\')">MVP</button>'+
+    '<button class="round-pill '+(sfilt==='goalkeeper'?'active':'')+'" onclick="setSF(\'goalkeeper\')">Portero</button>';
   var sorted=Object.keys(sc).map(function(uid){return {uid:uid,d:sc[uid]};});
   sorted.sort(function(a,b){
     if(sfilt==='all') return b.d.total-a.d.total;
@@ -1051,7 +1229,7 @@ function renderStandings(){
     var pc=i===0?'pos-1':i===1?'pos-2':i===2?'pos-3':'pos-other';
     var gPts=d.breakdown.groups?d.breakdown.groups.pts:0;
     var bPts=d.breakdown.bracket?d.breakdown.bracket.pts:0;
-    var sPts=(d.breakdown.topScorer?d.breakdown.topScorer.pts:0)+(d.breakdown.espScorer?d.breakdown.espScorer.pts:0);
+    var sPts=(d.breakdown.topScorer?d.breakdown.topScorer.pts:0)+(d.breakdown.espScorer?d.breakdown.espScorer.pts:0)+(d.breakdown.mvp?d.breakdown.mvp.pts:0)+(d.breakdown.goalkeeper?d.breakdown.goalkeeper.pts:0);
     h+='<div class="stn-row"><div class="pos-num '+pc+'">'+(i+1)+'</div><div style="font-weight:600;font-size:14px">'+d.name+'</div><div class="pts-cell">'+gPts+'</div><div class="pts-cell">'+bPts+'</div><div class="pts-cell">'+sPts+'</div><div class="pts-total">'+d.total+'</div></div>';
   });
   tbl.innerHTML=h;
@@ -1161,20 +1339,41 @@ function renderQuinelaTab(){
   });
   h+='</div><div style="font-size:12px;color:var(--text3);margin-top:.5rem">Seleccionados: <b style="color:'+(selectedThirds.length===8?'#00C853':'var(--text)')+'">'+selectedThirds.length+'/8</b></div></div>';
 
-  // Scorers
+  // Scorers + awards
   var scS=S.scorers||{};
   var tsp=q.topScorer||'';
   var esp2=q.espScorer||'';
+  var mvpPick=q.mvp||'';
+  var gkPick=q.goalkeeper||'';
+
+  function scorePickRow(icon,label,bonus,field,value,opts,actualName,actualField){
+    var confirmed=actualName&&value.toLowerCase().trim()===actualName.toLowerCase().trim();
+    var h2='<div>';
+    h2+='<div style="font-size:12px;color:var(--text3);margin-bottom:.4rem">'+icon+' '+label+' <span style="color:var(--gold)">('+bonus+')</span></div>';
+    if(ce1){
+      h2+=makeSelect('sel_'+field, opts, value,
+        'saveScorePick(\''+vu+'\',\''+field+'\',this.value)',
+        '— Elige un jugador —');
+    } else {
+      h2+='<div style="font-size:14px;font-weight:600;padding:6px 0">'+(value||'<span style="color:var(--text3)">Sin elección</span>')+'</div>';
+    }
+    if(actualName){
+      h2+='<div style="font-size:11px;color:var(--text3);margin-top:3px">';
+      h2+='Ganador real: <b style="color:var(--text2)">'+actualName+'</b>';
+      if(confirmed) h2+=' <b style="color:var(--gold)">✓ +10 pts</b>';
+      h2+='</div>';
+    }
+    h2+='</div>';
+    return h2;
+  }
+
+  h+='<div style="margin-top:1rem">';
+  h+='<div style="font-family:var(--fd);font-size:15px;letter-spacing:1px;color:var(--gold);margin-bottom:.75rem">PREMIOS INDIVIDUALES</div>';
   h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">';
-  h+='<div><div style="font-size:12px;color:var(--text3);margin-bottom:.5rem">⚽ Goleador mundial <span style="color:var(--gold)">(10 bonus + 1/gol)</span></div>';
-  if(ce1) h+='<input value="'+tsp+'" placeholder="Nombre del jugador" onchange="saveScorePick(\''+vu+'\',\'topScorer\',this.value)" style="width:100%;padding:8px;background:var(--dark2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:13px">';
-  else h+='<div style="font-size:14px;font-weight:600">'+(tsp||'Sin elección')+'</div>';
-  if(scS.world&&scS.world.name) h+='<div style="font-size:11px;color:var(--text3);margin-top:4px">Actual: <b>'+scS.world.name+'</b>'+(tsp.toLowerCase().trim()===scS.world.name.toLowerCase().trim()?' <b style="color:var(--gold)">✓</b>':'')+'</div>';
-  h+='</div>';
-  h+='<div><div style="font-size:12px;color:var(--text3);margin-bottom:.5rem">🇪🇸 Goleador español <span style="color:var(--gold)">(10 bonus + 1/gol)</span></div>';
-  if(ce1) h+='<input value="'+esp2+'" placeholder="Jugador de España" onchange="saveScorePick(\''+vu+'\',\'espScorer\',this.value)" style="width:100%;padding:8px;background:var(--dark2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:13px">';
-  else h+='<div style="font-size:14px;font-weight:600">'+(esp2||'Sin elección')+'</div>';
-  if(scS.spain&&scS.spain.name) h+='<div style="font-size:11px;color:var(--text3);margin-top:4px">Actual: <b>'+scS.spain.name+'</b>'+(esp2.toLowerCase().trim()===scS.spain.name.toLowerCase().trim()?' <b style="color:var(--gold)">✓</b>':'')+'</div>';
+  h+=scorePickRow('⚽','Máximo goleador del Mundial','10 pts + 1/gol','topScorer',tsp,WORLD_PLAYERS,scS.world&&scS.world.name,'world');
+  h+=scorePickRow('🇪🇸','Máximo goleador español','10 pts + 1/gol','espScorer',esp2,ESP_PLAYERS,scS.spain&&scS.spain.name,'spain');
+  h+=scorePickRow('🏅','MVP del torneo','10 pts','mvp',mvpPick,MVP_PLAYERS,scS.mvp||'','mvp');
+  h+=scorePickRow('🧤','Mejor portero','10 pts','goalkeeper',gkPick,GK_PLAYERS,scS.goalkeeper||'','goalkeeper');
   h+='</div></div></div>';
 
   // FASE 2: BRACKET
@@ -1366,16 +1565,25 @@ function moveAdminThird(tid,dir){
 // ── ADMIN ─────────────────────────────────────────────────
 var adminRound='groups';
 
+function populateSelect(id, options, value){
+  var el=document.getElementById(id);
+  if(!el) return;
+  el.innerHTML='<option value="">— Elige jugador —</option>';
+  options.forEach(function(p){
+    el.innerHTML+='<option value="'+p+'"'+(p===value?' selected':'')+'>'+p+'</option>';
+  });
+}
+
 function renderAdminTab(){
   renderPhaseControls();
   renderPlayerGoals();
   renderUserList();
   renderAdminAllQuinelas();
   var sc=S.scorers||{};
-  var w=document.getElementById('top-scorer-name');
-  var e=document.getElementById('esp-scorer-name');
-  if(w) w.value=(sc.world&&sc.world.name)||'';
-  if(e) e.value=(sc.spain&&sc.spain.name)||'';
+  populateSelect('top-scorer-name', WORLD_PLAYERS, (sc.world&&sc.world.name)||'');
+  populateSelect('esp-scorer-name', ESP_PLAYERS, (sc.spain&&sc.spain.name)||'');
+  populateSelect('mvp-name', MVP_PLAYERS, sc.mvp||'');
+  populateSelect('gk-name', GK_PLAYERS, sc.goalkeeper||'');
   document.getElementById('admin-round-pills').innerHTML=
     '<button class="round-pill '+(adminRound==='groups'?'active':'')+'" onclick="setAdminRound(\'groups\')">🏟️ Resultados de grupos</button>'+
     '<button class="round-pill '+(adminRound==='bracket'?'active':'')+'" onclick="setAdminRound(\'bracket\')">🏆 Bracket eliminatorio</button>';
@@ -1579,6 +1787,8 @@ function saveScorers(){
   if(!S.scorers) S.scorers={};
   S.scorers.world={name:document.getElementById('top-scorer-name').value.trim()};
   S.scorers.spain={name:document.getElementById('esp-scorer-name').value.trim()};
+  S.scorers.mvp=document.getElementById('mvp-name').value.trim();
+  S.scorers.goalkeeper=document.getElementById('gk-name').value.trim();
   var picks={};
   Object.values(S.quinelas||{}).forEach(function(q){
     if(q.topScorer) picks[q.topScorer.toLowerCase().trim()]=1;
@@ -1642,26 +1852,121 @@ function renderAdminAllQuinelas(){
   if(!div) return;
   var players=Object.keys(S.users);
   if(!players.length){div.innerHTML='<div class="no-data">Sin jugadores</div>';return;}
-  var h='<div style="overflow-x:auto"><table class="res-table"><thead><tr>'
-    +'<th>Jugador</th><th style="text-align:center">Grupos</th><th style="text-align:center">Terceros</th>'
-    +'<th style="text-align:center">Bracket</th><th style="text-align:center">⚽ Mundial</th>'
-    +'<th style="text-align:center">🇪🇸 España</th><th style="text-align:right">Total</th>'
-    +'</tr></thead><tbody>';
+
+  var sc_real=S.results||{};
+  var br_real=sc_real.bracket||{};
+  var scA=S.scorers||{};
+
+  // Helper: pts color
+  function ptsCell(pts,max){
+    var pct=max?pts/max:0;
+    var col=pts===0?'var(--text3)':pct>=0.8?'#00C853':pct>=0.5?'var(--gold)':'var(--text2)';
+    return '<td style="text-align:center;font-family:var(--fd);font-size:15px;color:'+col+'">'+pts+'</td>';
+  }
+  function pickCell(val,actual){
+    if(!val) return '<td style="text-align:center;color:var(--text3);font-size:11px">—</td>';
+    var match=actual&&val.toLowerCase().trim()===actual.toLowerCase().trim();
+    return '<td style="text-align:center;font-size:11px;color:'+(match?'#00C853':'var(--text2)')+'">'+val+(match?' ✓':'')+'</td>';
+  }
+
+  // Header
+  var h='<div style="overflow-x:auto">';
+  h+='<table class="res-table" style="min-width:900px">';
+  h+='<thead>';
+  h+='<tr style="background:#0d0d0d">';
+  h+='<th rowspan="2" style="text-align:left;vertical-align:bottom">Jugador</th>';
+  h+='<th colspan="5" style="text-align:center;border-bottom:1px solid var(--border);color:var(--gold);letter-spacing:1px;padding-bottom:4px">BRACKET</th>';
+  h+='<th colspan="4" style="text-align:center;border-bottom:1px solid var(--border);color:#7eb3ff;letter-spacing:1px;padding-bottom:4px">PREMIOS INDIVIDUALES</th>';
+  h+='<th rowspan="2" style="text-align:right;vertical-align:bottom;color:var(--gold)">TOTAL</th>';
+  h+='</tr>';
+  h+='<tr style="background:#0d0d0d">';
+  // Bracket sub-headers
+  h+='<th style="text-align:center">16avos<br><span style="font-weight:400;color:var(--text3)">máx.32</span></th>';
+  h+='<th style="text-align:center">Octavos<br><span style="font-weight:400;color:var(--text3)">máx.32</span></th>';
+  h+='<th style="text-align:center">Cuartos<br><span style="font-weight:400;color:var(--text3)">máx.32</span></th>';
+  h+='<th style="text-align:center">Semis<br><span style="font-weight:400;color:var(--text3)">máx.32</span></th>';
+  h+='<th style="text-align:center">Sub/Camp.<br><span style="font-weight:400;color:var(--text3)">8+10</span></th>';
+  // Awards sub-headers
+  h+='<th style="text-align:center">⚽ Gol. Mundial<br><span style="font-weight:400;color:var(--text3)">10+1/gol</span></th>';
+  h+='<th style="text-align:center">🇪🇸 Gol. Español<br><span style="font-weight:400;color:var(--text3)">10+1/gol</span></th>';
+  h+='<th style="text-align:center">🏅 MVP<br><span style="font-weight:400;color:var(--text3)">10 pts</span></th>';
+  h+='<th style="text-align:center">🧤 Portero<br><span style="font-weight:400;color:var(--text3)">10 pts</span></th>';
+  h+='</tr>';
+  h+='</thead><tbody>';
+
   players.forEach(function(uid){
     var u=S.users[uid];
     var q=S.quinelas[uid]||{};
     var sc=calcScore(uid);
-    var go=GROUPS.filter(function(g){return q.groupOrder&&q.groupOrder[g.id];}).length;
-    var bp=Object.keys(q.bracket||{}).length;
-    var to=(q.thirdOrder||[]).length;
-    h+='<tr><td style="font-weight:600">'+u.name+'</td>'
-      +'<td style="text-align:center;color:var(--text3)">'+go+'/12</td>'
-      +'<td style="text-align:center;color:var(--text3)">'+to+'</td>'
-      +'<td style="text-align:center;color:var(--text3)">'+bp+'</td>'
-      +'<td style="text-align:center;color:var(--text2);font-size:11px">'+(q.topScorer||'—')+'</td>'
-      +'<td style="text-align:center;color:var(--text2);font-size:11px">'+(q.espScorer||'—')+'</td>'
-      +'<td style="text-align:right;font-family:var(--fd);font-size:16px;color:var(--gold)">'+sc.total+'</td></tr>';
+    var bd=sc.breakdown;
+    var bp=q.bracket||{};
+
+    // Calculate bracket pts by round
+    var r32pts=0,r16pts=0,qfpts=0,sfpts=0,finalPts=0;
+    var roundPts={m73:1,m74:1,m75:1,m76:1,m77:1,m78:1,m79:1,m80:1,m81:1,m82:1,m83:1,m84:1,m85:1,m86:1,m87:1,m88:1,m89:2,m90:2,m91:2,m92:2,m93:2,m94:2,m95:2,m96:2,m97:4,m98:4,m99:4,m100:4,m101:8,m102:8};
+    Object.keys(br_real).forEach(function(mid){
+      if(mid==='m103') return;
+      var correct=br_real[mid];if(!correct) return;
+      var pick=bp[mid];if(!pick||pick!==correct) return;
+      var pts=roundPts[mid]||0;
+      if(mid.indexOf('m7')===0||mid.indexOf('m8')===0) r32pts+=pts;
+      else if(mid.indexOf('m9')===0&&parseInt(mid.slice(1))<=96) r16pts+=pts;
+      else if(mid.indexOf('m9')===0) qfpts+=pts;
+      else sfpts+=pts;
+    });
+    // Final/subcampeon
+    var campeonPts=0,subcampeonPts=bd.bracket?bd.bracket.subcampeonPts||0:0;
+    if(br_real['m103']&&bp['m103']&&br_real['m103']===bp['m103']) campeonPts=10;
+    finalPts=subcampeonPts+campeonPts;
+
+    // Champion/subcampeon display
+    var userChamp=bp['m103']?teamById(bp['m103']).n:'—';
+    var userSF1=bp['m101']?teamById(bp['m101']).n:'—';
+    var userSF2=bp['m102']?teamById(bp['m102']).n:'—';
+    var userSub=bp['m103']?(bp['m103']===bp['m101']?userSF2:userSF1):'—';
+    var realChamp=br_real['m103']?teamById(br_real['m103']).n:'';
+    var realSF1=br_real['m101']?teamById(br_real['m101']).n:'';
+    var realSF2=br_real['m102']?teamById(br_real['m102']).n:'';
+    var realSub=realChamp?(realChamp===realSF1?realSF2:realSF1):'';
+    var champMatch=realChamp&&userChamp===realChamp;
+    var subMatch=realSub&&userSub===realSub;
+    var finalCell='<td style="text-align:center;font-size:10px">'
+      +'<div style="color:'+(subMatch?'#00C853':'var(--text2)')+'">🥈'+userSub+(subMatch?' ✓':'')+'</div>'
+      +'<div style="color:'+(champMatch?'#00C853':'var(--gold)');
+    finalCell+='">🥇'+userChamp+(champMatch?' ✓':'')+'</div>'
+      +'<div style="font-family:var(--fd);font-size:13px;color:var(--gold)">'+finalPts+'pts</div>'
+      +'</td>';
+
+    h+='<tr style="border-top:1px solid var(--border)">';
+    h+='<td style="font-weight:600;padding:10px 12px">'+u.name+'</td>';
+    h+=ptsCell(r32pts,32);
+    h+=ptsCell(r16pts,32);
+    h+=ptsCell(qfpts,32);
+    h+=ptsCell(sfpts,32);
+    h+=finalCell;
+    h+=pickCell(q.topScorer, scA.world&&scA.world.name);
+    h+=pickCell(q.espScorer, scA.spain&&scA.spain.name);
+    h+=pickCell(q.mvp, scA.mvp);
+    h+=pickCell(q.goalkeeper, scA.goalkeeper);
+    h+='<td style="text-align:right;font-family:var(--fd);font-size:20px;color:var(--gold);padding:10px 12px">'+sc.total+'</td>';
+    h+='</tr>';
   });
+
+  // Totals row
+  h+='<tr style="border-top:2px solid var(--border2);background:var(--dark2)">';
+  h+='<td style="font-family:var(--fd);font-size:13px;letter-spacing:1px;color:var(--text3);padding:8px 12px">MÁX. POSIBLE</td>';
+  h+='<td style="text-align:center;color:var(--text3);font-size:12px">32</td>';
+  h+='<td style="text-align:center;color:var(--text3);font-size:12px">32</td>';
+  h+='<td style="text-align:center;color:var(--text3);font-size:12px">32</td>';
+  h+='<td style="text-align:center;color:var(--text3);font-size:12px">32</td>';
+  h+='<td style="text-align:center;color:var(--text3);font-size:12px">18</td>';
+  h+='<td style="text-align:center;color:var(--text3);font-size:12px">10+goles</td>';
+  h+='<td style="text-align:center;color:var(--text3);font-size:12px">10+goles</td>';
+  h+='<td style="text-align:center;color:var(--text3);font-size:12px">10</td>';
+  h+='<td style="text-align:center;color:var(--text3);font-size:12px">10</td>';
+  h+='<td style="text-align:right;font-family:var(--fd);font-size:16px;color:var(--text3);padding:8px 12px">186+</td>';
+  h+='</tr>';
+
   h+='</tbody></table></div>';
   div.innerHTML=h;
 }
