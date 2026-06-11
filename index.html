@@ -1461,8 +1461,10 @@ function renderQuinelaTab(forceUid){
   var p1=(S.settings&&S.settings.phases&&S.settings.phases[1]===true);
   var p2=(S.settings&&S.settings.phases&&S.settings.phases[2]===true);
   var userUnlocked=!!(S.users[vu]&&S.users[vu].unlocked);
-  var ce1=(p1||userUnlocked)&&vu===currentUser;
-  var ce2=(p2||userUnlocked)&&vu===currentUser;
+  var isAdminEditing=S.users[currentUser]&&S.users[currentUser].isAdmin&&vu!==currentUser;
+  // Can edit if: phase open for own quinela, OR user is unlocked (own or admin editing)
+  var ce1=(p1&&vu===currentUser)||(userUnlocked&&(vu===currentUser||isAdminEditing));
+  var ce2=(p2&&vu===currentUser)||(userUnlocked&&(vu===currentUser||isAdminEditing));
   // Awards vars needed throughout
   var scS=S.scorers||{};
   var tsp=q.topScorer||'';
@@ -1494,8 +1496,12 @@ function renderQuinelaTab(forceUid){
   var h='';
 
   // Show unlock notice if user has special access while phases are closed
-  if(userUnlocked&&vu===currentUser&&(!p1||!p2)){
-    h+='<div style="background:rgba(200,168,75,.08);border:1px solid rgba(200,168,75,.3);border-radius:var(--r);padding:8px 14px;margin-bottom:1rem;font-size:12px;color:var(--gold)">🔓 Tienes acceso especial para editar tu quiniela.</div>';
+  if(userUnlocked){
+    if(vu===currentUser&&(!p1||!p2)){
+      h+='<div style="background:rgba(200,168,75,.08);border:1px solid rgba(200,168,75,.3);border-radius:var(--r);padding:8px 14px;margin-bottom:1rem;font-size:12px;color:var(--gold)">🔓 Tienes acceso especial para editar tu quiniela.</div>';
+    } else if(isAdminEditing){
+      h+='<div style="background:rgba(200,168,75,.08);border:1px solid rgba(200,168,75,.3);border-radius:var(--r);padding:8px 14px;margin-bottom:1rem;font-size:12px;color:var(--gold)">🔓 Editando la quiniela de <b>'+S.users[vu].name+'</b> (desbloqueado).</div>';
+    }
   }
 
   // ── PREMIOS INDIVIDUALES (card separada, al principio) ──
