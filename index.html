@@ -1915,7 +1915,7 @@ function renderPhaseControls(){
 function togglePhase(id,v){
   if(!S.settings.phases) S.settings.phases={};
   S.settings.phases[id]=v;
-  saveState();
+  saveAdminState(null);
   renderPhaseControls();
 }
 
@@ -2038,37 +2038,47 @@ function renderAdminResults(){
   }
 }
 
+// Admin saves go directly to Supabase (full upsert) — not through merge_quinela
+// This ensures settings, results and scorers are always persisted correctly
+function saveAdminState(msgId){
+  localStorage.setItem('mundial2026',JSON.stringify(S));
+  supa.from('gamestate').upsert({id:'mundial2026',data:S,updated_at:new Date().toISOString()})
+    .then(function(r){
+      showSyncStatus(!r.error);
+      if(msgId){
+        var m=document.getElementById(msgId);
+        if(m){m.innerHTML='<span style="color:'+(r.error?'#E10600':'#00C853')+'">'+(r.error?'✗ Error':'✓ Guardado')+'</span>';setTimeout(function(){if(m)m.innerHTML='';},2000);}
+      }
+    })
+    .catch(function(){showSyncStatus(false);});
+}
+
 function saveGroupResults(){
   var q32=[];
   GROUPS.forEach(function(g){
     var p=(S.results.groups&&S.results.groups[g.id])||g.teams.map(function(t){return t.id;});
     q32.push(p[0],p[1]);
   });
-  // Store admin thirds as GROUP IDs (A,B,C...) ordered by ranking — for Annex C
   var adminThirds=(S.results.groups&&S.results.groups.thirds)||[];
-  // adminThirds is ordered list of group IDs whose 3rd place teams qualify
   adminThirds.slice(0,8).forEach(function(gid){
     var p=(S.results.groups&&S.results.groups[gid])||GROUPS.filter(function(g){return g.id===gid;})[0].teams.map(function(t){return t.id;});
     if(p[2]) q32.push(p[2]);
   });
   S.results.groups.qualified=q32;
-  saveState();
-  var m=document.getElementById('results-msg');
-  if(m){m.innerHTML='<span style="color:#00C853">✓ Guardado</span>';setTimeout(function(){m.innerHTML='';},2000);}
+  saveAdminState('results-msg');
 }
 
 function setBracketResult(mid,tid){
   if(!S.results.bracket) S.results.bracket={};
   S.results.bracket[mid]=tid;
-  saveState();
+  saveAdminState(null);
   renderAdminResults();
 }
 
 function saveBracketResults(){
-  saveState();
-  var m=document.getElementById('results-msg2');
-  if(m){m.innerHTML='<span style="color:#00C853">✓ Guardado</span>';setTimeout(function(){m.innerHTML='';},2000);}
+  saveAdminState('results-msg2');
 }
+
 
 function renderPlayerGoals(){
   var wrap=document.getElementById('player-goals-wrap');
@@ -2105,9 +2115,7 @@ function saveScorers(){
     var el=document.getElementById('goals-'+name.replace(/\s/g,'_'));
     if(el) S.scorers.playerGoals[name]=parseInt(el.value)||0;
   });
-  saveState();
-  var m=document.getElementById('scorers-msg');
-  if(m){m.innerHTML='<span style="color:#00C853">✓ Guardado</span>';setTimeout(function(){m.innerHTML='';},2000);}
+  saveAdminState('scorers-msg');
 }
 
 function renderUserList(){
