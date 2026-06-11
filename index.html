@@ -352,13 +352,10 @@ let saveTimer=null,S={};
 // Deep merge: server data wins for results/settings, but ALL users/quinelas are preserved
 function mergeStates(local, server) {
   var merged = JSON.parse(JSON.stringify(server)); // start from server
-  // Users: keep ALL from both, server wins on individual conflicts
+  // Users: keep ALL from both, server wins on conflicts
   merged.users = Object.assign({}, local.users||{}, server.users||{});
-  // Admin always from server
   if(server.users&&server.users['pablo']) merged.users['pablo'] = server.users['pablo'];
-  // Quinelas: keep ALL from both
-  // For each user: server wins UNLESS this is the current logged-in user's own quinela
-  // (their local data is more recent than server for their own picks)
+  // Quinelas: current user's local wins, everyone else server wins
   var allUids = Object.keys(Object.assign({}, local.quinelas||{}, server.quinelas||{}));
   merged.quinelas = {};
   allUids.forEach(function(uid){
@@ -366,18 +363,17 @@ function mergeStates(local, server) {
     var serverQ = (server.quinelas||{})[uid];
     if(!localQ) { merged.quinelas[uid] = serverQ; return; }
     if(!serverQ) { merged.quinelas[uid] = localQ; return; }
-    // Both exist: if this is the currently logged-in user, local wins
-    // Otherwise server wins (we don't want to overwrite others with stale local data)
     if(uid === currentUser) {
       merged.quinelas[uid] = localQ;
     } else {
       merged.quinelas[uid] = serverQ;
     }
   });
-  // Results and settings: server always wins (admin sets these)
-  merged.results = server.results || local.results || {};
-  merged.settings = server.settings || local.settings || {};
-  merged.scorers = server.scorers || local.scorers || {};
+  // Settings, results, scorers: ALWAYS from server — admin controls these
+  // Local NEVER wins here, even if local has different values
+  merged.settings = server.settings || {};
+  merged.results  = server.results  || {};
+  merged.scorers  = server.scorers  || {};
   return merged;
 }
 
@@ -398,11 +394,11 @@ function saveState(){
     .then(function(r){
       showSyncStatus(!r.error);
       if(!r.error){
-        // Re-read full state after atomic write so S stays in sync
+        // Re-read and merge so server settings/results always win
         supa.from('gamestate').select('data').eq('id','mundial2026').single()
           .then(function(r2){
             if(!r2.error&&r2.data&&r2.data.data){
-              S=r2.data.data;
+              S=mergeStates(S, r2.data.data);
               localStorage.setItem('mundial2026',JSON.stringify(S));
             }
           });
@@ -1071,25 +1067,25 @@ function teamById(id){
 
 // ── PLAYER LISTS ─────────────────────────────────────────
 var WORLD_PLAYERS=[
-  'Kylian Mbappé','Erling Haaland','Vinicius Jr.','Lamine Yamal','Pedri',
-  'Lionel Messi','Cristiano Ronaldo','Neymar Jr.','Marcus Rashford',
-  'Phil Foden','Bukayo Saka','Harry Kane','Jude Bellingham','Trent Alexander-Arnold',
-  'Gavi','Fermín López','Dani Olmo','Rodri','Alphonso Davies',
-  'Julián Álvarez','Lautaro Martínez','Nico Williams','Raphinha','Rodrygo',
-  'Florian Wirtz','Jamal Musiala','Leroy Sané','Kai Havertz','Thomas Müller',
+  // Favoritos al Bota de Oro
+  'Kylian Mbappé','Erling Haaland','Lionel Messi','Harry Kane',
+  'Cristiano Ronaldo','Vinicius Jr.','Lamine Yamal','Nico Williams',
+  // Delanteros confirmados en el Mundial
+  'Julián Álvarez','Lautaro Martínez','Paulo Dybala','Enzo Fernández',
+  'Neymar Jr.','Raphinha','Rodrygo','Endrick','Gabriel Martinelli',
+  'Florian Wirtz','Jamal Musiala','Kai Havertz','Thomas Müller',
   'Antoine Griezmann','Ousmane Dembélé','Marcus Thuram','Randal Kolo Muani',
-  'Rafael Leão','Bernardo Silva','Rúben Neves','Bruno Fernandes',
-  'Cody Gakpo','Xavi Simons','Virgil van Dijk','Memphis Depay',
-  'Son Heung-min','Mohamed Salah','Sadio Mané','Victor Osimhen',
-  'Riyad Mahrez','Ivan Toney','Takefusa Kubo','Kaoru Mitoma',
-  'Paulo Dybala','Rodrigo De Paul','Enzo Fernández','Alexis Mac Allister',
-  'Darwin Núñez','Federico Valverde','Facundo Torres','Luis Suárez',
-  'Roberto Firmino','Gabriel Martinelli','Endrick','Igor Jesus',
-  'Achraf Hakimi','Sofyan Amrabat','Yassine Bounou',
-  'Christian Pulisic','Gio Reyna','Tyler Adams','Weston McKennie',
-  'Giovanni Simeone','Hirving Lozano','Guillermo Ochoa',
-  'Rasmus Hojlund','Martin Odegaard','Alexander Isak',
-  'Robert Lewandowski','Piotr Zielinski'
+  'Bruno Fernandes','Rafael Leão','Bernardo Silva','Diogo Jota',
+  'Cody Gakpo','Xavi Simons','Memphis Depay',
+  'Phil Foden','Bukayo Saka','Marcus Rashford','Jude Bellingham',
+  'Son Heung-min','Darwin Núñez','Federico Valverde',
+  'James Rodríguez','Luis Díaz',
+  'Christian Pulisic','Gio Reyna','Hirving Lozano',
+  'Sadio Mané','Achraf Hakimi',
+  'Martin Ødegaard','Alexander Isak',
+  'Takefusa Kubo','Kaoru Mitoma',
+  // España
+  'Mikel Oyarzabal','Dani Olmo','Ferran Torres','Pedri','Gavi'
 ].sort();
 
 var ESP_PLAYERS=[
@@ -1107,33 +1103,31 @@ var ESP_PLAYERS=[
 ].sort();
 
 var MVP_PLAYERS=[
-  'Kylian Mbappé','Erling Haaland','Vinicius Jr.','Lamine Yamal',
-  'Lionel Messi','Jude Bellingham','Phil Foden','Bukayo Saka',
-  'Pedri','Gavi','Rodri','Dani Olmo','Nico Williams',
-  'Florian Wirtz','Jamal Musiala','Julián Álvarez','Lautaro Martínez',
-  'Rafael Leão','Bruno Fernandes','Antoine Griezmann',
-  'Son Heung-min','Cody Gakpo','Xavi Simons',
-  'Alexis Mac Allister','Federico Valverde','Darwin Núñez',
-  'Christian Pulisic','Marcus Rashford','Harry Kane',
-  'Gio Reyna','Fermín López','Bernardo Silva'
+  'Kylian Mbappé','Erling Haaland','Lionel Messi','Vinicius Jr.',
+  'Lamine Yamal','Jude Bellingham','Phil Foden','Pedri',
+  'Rodri','Florian Wirtz','Jamal Musiala',
+  'Julián Álvarez','Nico Williams','Dani Olmo',
+  'Raphinha','Bruno Fernandes','Antoine Griezmann',
+  'Harry Kane','Bukayo Saka','Son Heung-min',
+  'Cody Gakpo','Xavi Simons','Federico Valverde',
+  'Martin Ødegaard','Cristiano Ronaldo',
+  'Darwin Núñez','James Rodríguez','Gavi',
+  'Mikel Oyarzabal','Mikel Merino'
 ].sort();
 
 var GK_PLAYERS=[
   // España
   'Unai Simón','Joan García','David Raya',
-  // Otros favoritos
-  'Mike Maignan','Alisson Becker','Ederson',
-  'Manuel Neuer','Marc-André ter Stegen','Oliver Baumann',
-  'Gianluigi Donnarumma','Andriy Lunin','Thibaut Courtois',
-  'Jordan Pickford','Aaron Ramsdale',
-  'Gregor Kobel','Yann Sommer','Guillermo Ochoa',
-  'Yassine Bounou','Ronwen Williams','Matt Turner',
-  'Altay Bayındır','Mert Günok',
+  // Grandes favoritos al Guante de Oro
+  'Alisson Becker','Emiliano Martínez','Thibaut Courtois',
+  'Mike Maignan','Jordan Pickford','Diogo Costa',
+  'Manuel Neuer','Gregor Kobel',
+  'Guillermo Ochoa','Yassine Bounou',
   'Kim Seung-gyu','Eiji Kawashima',
-  'Diogo Costa','Rui Patrício',
-  'Emiliano Martínez','Franco Armani',
+  'Matt Turner','Ronwen Williams',
   'Fernando Muslera','Sergio Rochet'
 ].sort();
+
 
 function makeSelect(id, options, value, onchangeFn, placeholder) {
   // Check if current value is in list or is a custom entry
@@ -1917,7 +1911,7 @@ function renderPhaseControls(){
 function togglePhase(id,v){
   if(!S.settings.phases) S.settings.phases={};
   S.settings.phases[id]=v;
-  saveState();
+  saveAdminState(null);
   renderPhaseControls();
 }
 
@@ -2040,37 +2034,47 @@ function renderAdminResults(){
   }
 }
 
+// Admin saves go directly to Supabase (full upsert) — not through merge_quinela
+// This ensures settings, results and scorers are always persisted correctly
+function saveAdminState(msgId){
+  localStorage.setItem('mundial2026',JSON.stringify(S));
+  supa.from('gamestate').upsert({id:'mundial2026',data:S,updated_at:new Date().toISOString()})
+    .then(function(r){
+      showSyncStatus(!r.error);
+      if(msgId){
+        var m=document.getElementById(msgId);
+        if(m){m.innerHTML='<span style="color:'+(r.error?'#E10600':'#00C853')+'">'+(r.error?'✗ Error':'✓ Guardado')+'</span>';setTimeout(function(){if(m)m.innerHTML='';},2000);}
+      }
+    })
+    .catch(function(){showSyncStatus(false);});
+}
+
 function saveGroupResults(){
   var q32=[];
   GROUPS.forEach(function(g){
     var p=(S.results.groups&&S.results.groups[g.id])||g.teams.map(function(t){return t.id;});
     q32.push(p[0],p[1]);
   });
-  // Store admin thirds as GROUP IDs (A,B,C...) ordered by ranking — for Annex C
   var adminThirds=(S.results.groups&&S.results.groups.thirds)||[];
-  // adminThirds is ordered list of group IDs whose 3rd place teams qualify
   adminThirds.slice(0,8).forEach(function(gid){
     var p=(S.results.groups&&S.results.groups[gid])||GROUPS.filter(function(g){return g.id===gid;})[0].teams.map(function(t){return t.id;});
     if(p[2]) q32.push(p[2]);
   });
   S.results.groups.qualified=q32;
-  saveState();
-  var m=document.getElementById('results-msg');
-  if(m){m.innerHTML='<span style="color:#00C853">✓ Guardado</span>';setTimeout(function(){m.innerHTML='';},2000);}
+  saveAdminState('results-msg');
 }
 
 function setBracketResult(mid,tid){
   if(!S.results.bracket) S.results.bracket={};
   S.results.bracket[mid]=tid;
-  saveState();
+  saveAdminState(null);
   renderAdminResults();
 }
 
 function saveBracketResults(){
-  saveState();
-  var m=document.getElementById('results-msg2');
-  if(m){m.innerHTML='<span style="color:#00C853">✓ Guardado</span>';setTimeout(function(){m.innerHTML='';},2000);}
+  saveAdminState('results-msg2');
 }
+
 
 function renderPlayerGoals(){
   var wrap=document.getElementById('player-goals-wrap');
@@ -2107,9 +2111,7 @@ function saveScorers(){
     var el=document.getElementById('goals-'+name.replace(/\s/g,'_'));
     if(el) S.scorers.playerGoals[name]=parseInt(el.value)||0;
   });
-  saveState();
-  var m=document.getElementById('scorers-msg');
-  if(m){m.innerHTML='<span style="color:#00C853">✓ Guardado</span>';setTimeout(function(){m.innerHTML='';},2000);}
+  saveAdminState('scorers-msg');
 }
 
 function renderUserList(){
