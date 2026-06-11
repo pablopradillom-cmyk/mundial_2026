@@ -379,12 +379,19 @@ function mergeStates(local, server) {
 
 function saveState(){
   localStorage.setItem('mundial2026',JSON.stringify(S));
+  // If admin is editing another user's quinela, use full upsert
+  var sel=document.getElementById('quinela-view-user');
+  var viewingUid=sel&&sel.value?sel.value:currentUser;
+  var isAdminEditingOther=S.users[currentUser]&&S.users[currentUser].isAdmin&&viewingUid&&viewingUid!==currentUser;
+  if(isAdminEditingOther){
+    saveAdminState(null);
+    return;
+  }
   clearTimeout(saveTimer);
   saveTimer=setTimeout(function(){
     if(!currentUser) return;
     var userQuinela=(S.quinelas&&S.quinelas[currentUser])||{};
     var usersData=S.users||{};
-    // Use atomic server-side merge — safe even if two people save simultaneously
     supa.rpc('merge_quinela',{
       row_id:'mundial2026',
       user_id:currentUser,
@@ -394,11 +401,10 @@ function saveState(){
     .then(function(r){
       showSyncStatus(!r.error);
       if(!r.error){
-        // Re-read and merge so server settings/results always win
         supa.from('gamestate').select('data').eq('id','mundial2026').single()
           .then(function(r2){
             if(!r2.error&&r2.data&&r2.data.data){
-              S=mergeStates(S, r2.data.data);
+              S=mergeStates(S,r2.data.data);
               localStorage.setItem('mundial2026',JSON.stringify(S));
             }
           });
