@@ -1551,60 +1551,46 @@ function renderResultadosTab(){
   var espActualLow=espActual.toLowerCase().trim();
   var myMvp=q.mvp||'';
   var myGk=q.goalkeeper||'';
-  var myMvpLow=myMvp.toLowerCase().trim();
-  var myGkLow=myGk.toLowerCase().trim();
   var mvpActualLow=(sc.mvp||'').toLowerCase().trim();
   var gkActualLow=(sc.goalkeeper||'').toLowerCase().trim();
 
-  // Goleador Mundial
-  h+='<div style="margin-bottom:1.25rem">';
-  h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:.5rem">';
-  h+='<span style="font-family:var(--fd);font-size:15px;letter-spacing:1px">⚽ GOLEADOR MUNDIAL</span>';
-  if(myTop){
-    var topOk=myTopLow===topActualLow&&topActualLow;
-    h+='<span style="font-size:11px;padding:2px 8px;border-radius:12px;background:'+(topOk?'rgba(0,200,83,.1)':'rgba(200,168,75,.1)')+';border:1px solid '+(topOk?'rgba(0,200,83,.4)':'rgba(200,168,75,.3)')+';color:'+(topOk?'#00C853':'var(--gold)')+'">Tu elección: <b>'+myTop+'</b>'+(topOk?' ✓ +10pts':'')+'</span>';
-  }
-  h+='</div>';
-  h+=goalsTable('all', myTop, topActual, getAllPicks('topScorer'));
+  // ── 4-column premios layout ──
+  h+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">';
+
+  // Col 1: Goleador Mundial
+  var topOk=myTopLow&&myTopLow===topActualLow;
+  h+='<div style="background:var(--dark2);border:1px solid '+(topOk?'rgba(0,200,83,.4)':'var(--border2)')+';border-radius:var(--rl);padding:12px 14px">';
+  h+='<div style="font-family:var(--fd);font-size:13px;letter-spacing:1px;color:var(--gold);margin-bottom:.5rem">⚽ GOLEADOR MUNDIAL</div>';
+  if(myTop) h+='<div style="font-size:11px;color:'+(topOk?'#00C853':'var(--text2)')+';margin-bottom:.5rem;font-weight:600">Tu elección: '+myTop+(topOk?' ✓ +10pts':'')+'</div>';
+  h+=goalsTable('all',myTop,topActual,getAllPicks('topScorer'));
   h+='</div>';
 
-  // Goleador España
-  h+='<div style="margin-bottom:1.25rem">';
-  h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:.5rem">';
-  h+='<span style="font-family:var(--fd);font-size:15px;letter-spacing:1px">🇪🇸 GOLEADOR ESPAÑOL</span>';
-  if(myEsp){
-    var espOk=myEspLow===espActualLow&&espActualLow;
-    h+='<span style="font-size:11px;padding:2px 8px;border-radius:12px;background:'+(espOk?'rgba(0,200,83,.1)':'rgba(200,168,75,.1)')+';border:1px solid '+(espOk?'rgba(0,200,83,.4)':'rgba(200,168,75,.3)')+';color:'+(espOk?'#00C853':'var(--gold)')+'">Tu elección: <b>'+myEsp+'</b>'+(espOk?' ✓ +10pts':'')+'</span>';
-  }
-  h+='</div>';
-  h+=goalsTable('esp', myEsp, espActual, getAllPicks('espScorer'));
+  // Col 2: Goleador España
+  var espOk=myEspLow&&myEspLow===espActualLow;
+  h+='<div style="background:var(--dark2);border:1px solid '+(espOk?'rgba(0,200,83,.4)':'var(--border2)')+';border-radius:var(--rl);padding:12px 14px">';
+  h+='<div style="font-family:var(--fd);font-size:13px;letter-spacing:1px;color:var(--gold);margin-bottom:.5rem">🇪🇸 GOLEADOR ESPAÑOL</div>';
+  if(myEsp) h+='<div style="font-size:11px;color:'+(espOk?'#00C853':'var(--text2)')+';margin-bottom:.5rem;font-weight:600">Tu elección: '+myEsp+(espOk?' ✓ +10pts':'')+'</div>';
+  h+=goalsTable('esp',myEsp,espActual,getAllPicks('espScorer'));
   h+='</div>';
 
-  // MVP
-  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">';
-  h+='<div>';
-  h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:.5rem">';
-  h+='<span style="font-family:var(--fd);font-size:15px;letter-spacing:1px">🏅 MVP</span>';
-  if(myMvp){
-    var mvpOk=myMvpLow===mvpActualLow&&mvpActualLow;
-    h+='<span style="font-size:11px;padding:2px 8px;border-radius:12px;background:'+(mvpOk?'rgba(0,200,83,.1)':'rgba(200,168,75,.1)')+';border:1px solid '+(mvpOk?'rgba(0,200,83,.4)':'rgba(200,168,75,.3)')+';color:'+(mvpOk?'#00C853':'var(--gold)')+'"><b>'+myMvp+'</b>'+(mvpOk?' ✓ +10pts':'')+'</span>';
-  }
-  h+='</div>';
-  h+=awardTable('mvp', sc.mvp||'');
+  // Col 3: MVP
+  var mvpOk=(q.mvp||'').toLowerCase().trim()&&(q.mvp||'').toLowerCase().trim()===mvpActualLow;
+  h+='<div style="background:var(--dark2);border:1px solid '+(mvpOk?'rgba(0,200,83,.4)':'var(--border2)')+';border-radius:var(--rl);padding:12px 14px">';
+  h+='<div style="font-family:var(--fd);font-size:13px;letter-spacing:1px;color:var(--gold);margin-bottom:.5rem">🏅 MVP</div>';
+  if(myMvp) h+='<div style="font-size:11px;color:'+(mvpOk?'#00C853':'var(--text2)')+';margin-bottom:.5rem;font-weight:600">Tu elección: '+myMvp+(mvpOk?' ✓ +10pts':'')+'</div>';
+  h+=awardTable('mvp',sc.mvp||'');
   h+='</div>';
 
-  // GK
-  h+='<div>';
-  h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:.5rem">';
-  h+='<span style="font-family:var(--fd);font-size:15px;letter-spacing:1px">🧤 MEJOR PORTERO</span>';
-  if(myGk){
-    var gkOk=myGkLow===gkActualLow&&gkActualLow;
-    h+='<span style="font-size:11px;padding:2px 8px;border-radius:12px;background:'+(gkOk?'rgba(0,200,83,.1)':'rgba(200,168,75,.1)')+';border:1px solid '+(gkOk?'rgba(0,200,83,.4)':'rgba(200,168,75,.3)')+';color:'+(gkOk?'#00C853':'var(--gold)')+'"><b>'+myGk+'</b>'+(gkOk?' ✓ +10pts':'')+'</span>';
-  }
+  // Col 4: Mejor portero
+  var gkOk=(q.goalkeeper||'').toLowerCase().trim()&&(q.goalkeeper||'').toLowerCase().trim()===gkActualLow;
+  h+='<div style="background:var(--dark2);border:1px solid '+(gkOk?'rgba(0,200,83,.4)':'var(--border2)')+';border-radius:var(--rl);padding:12px 14px">';
+  h+='<div style="font-family:var(--fd);font-size:13px;letter-spacing:1px;color:var(--gold);margin-bottom:.5rem">🧤 MEJOR PORTERO</div>';
+  if(myGk) h+='<div style="font-size:11px;color:'+(gkOk?'#00C853':'var(--text2)')+';margin-bottom:.5rem;font-weight:600">Tu elección: '+myGk+(gkOk?' ✓ +10pts':'')+'</div>';
+  h+=awardTable('goalkeeper',sc.goalkeeper||'');
   h+='</div>';
-  h+=awardTable('goalkeeper', sc.goalkeeper||'');
-  h+='</div>';
-  h+='</div></div>'; // close premios card
+
+  h+='</div></div>'; // close grid + card
+
 
   // ── FASE DE GRUPOS ────────────────────────────────────────
   h+='<div class="card">';
@@ -1680,46 +1666,19 @@ function renderResultadosTab(){
   h+='</div></div>';
 
   // ── BRACKET ───────────────────────────────────────────────
-  var rounds=[
-    {label:'DIECISEISAVOS',ids:['m73','m74','m75','m76','m77','m78','m79','m80','m81','m82','m83','m84','m85','m86','m87','m88'],pts:1},
-    {label:'OCTAVOS',ids:['m89','m90','m91','m92','m93','m94','m95','m96'],pts:2},
-    {label:'CUARTOS',ids:['m97','m98','m99','m100'],pts:4},
-    {label:'SEMIFINALES',ids:['m101','m102'],pts:8},
-    {label:'FINAL',ids:['m103'],pts:10,isLast:true},
-  ];
-  var bp=q.bracket||{};
+  // ── BRACKET ELIMINATORIO — mismo visual que Mi Quiniela ──
+  h+='<div class="card">';
+  h+='<div style="font-family:var(--fd);font-size:18px;letter-spacing:1.5px;color:var(--gold);margin-bottom:.75rem">FASE ELIMINATORIA</div>';
+  h+='<div style="font-size:12px;color:var(--text3);margin-bottom:.75rem">Verde = equipo acertado · Rojo = fallado · El número muestra los puntos ganados</div>';
 
-  rounds.forEach(function(round){
-    h+='<div class="card">';
-    h+='<div style="font-family:var(--fd);font-size:18px;letter-spacing:1.5px;color:var(--gold);margin-bottom:.75rem">'+round.label+' <span style="font-size:13px;color:var(--text3)">+'+round.pts+' pts por equipo acertado</span></div>';
-    var cols=round.isLast?'200px':'165px';
-    h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax('+cols+',1fr));gap:5px">';
-
-    round.ids.forEach(function(mid){
-      var myPick=bp[mid];
-      var realPick=br_real[mid];
-      var hit=myPick&&realPick&&myPick===realPick;
-      var miss=myPick&&realPick&&myPick!==realPick;
-      if(!myPick) return; // skip unpicked matches
-
-      var t=teamById(myPick);
-      var bc=hit?'#00C853':miss?'rgba(225,6,0,.4)':'rgba(255,255,255,.15)';
-      var bg=hit?'rgba(0,200,83,.08)':miss?'rgba(225,6,0,.05)':'transparent';
-      var tc=hit?'#00C853':miss?'#ff6b6b':'var(--text)';
-
-      h+='<div style="display:flex;align-items:center;gap:6px;padding:7px 10px;border:1px solid '+bc+';border-radius:var(--r);background:'+bg+'">';
-      h+='<span style="font-size:15px">'+t.f+'</span>';
-      h+='<span style="font-size:11px;font-weight:600;flex:1;color:'+tc+'">'+t.n+'</span>';
-      if(hit) h+='<span style="font-size:10px;color:#00C853;font-family:var(--fd)">+'+round.pts+'</span>';
-      else if(miss) h+='<span style="font-size:10px;color:#ff6b6b">✗</span>';
-      if(round.isLast&&hit) h+='<span style="font-size:16px">🏆</span>';
-      h+='</div>';
-    });
-    h+='</div></div>';
-  });
+  // Render the bracket visual with real results for comparison (green=correct, red=wrong)
+  var bracketHtml=renderBracket(uid,false,br_real);
+  h+=bracketHtml;
+  h+='</div>';
 
   div.innerHTML=h;
 }
+
 
 
 var sfilt='all';
@@ -1913,8 +1872,9 @@ function renderBracketSection(uid){
 }
 
 
-function renderBracket(uid,canEdit){
+function renderBracket(uid,canEdit,realBracket){
   var bp=(S.quinelas[uid]&&S.quinelas[uid].bracket)||{};
+  var rb=realBracket||null; // real results for comparison
 
   function getTeam(slot){
     var id=resolveSlot(slot,bp,uid);
@@ -1929,21 +1889,30 @@ function renderBracket(uid,canEdit){
   function renderMatch(m,size){
     var at=getTeam(m.a), bt=getTeam(m.b);
     var aId=getTeamId(m.a), bId=getTeamId(m.b);
-    var aw=(bp[m.id]&&bp[m.id]===aId&&!!aId);
-    var bw=(bp[m.id]&&bp[m.id]===bId&&!!bId);
+    var myPick=bp[m.id];
+    var aw=(myPick&&myPick===aId&&!!aId);
+    var bw=(myPick&&myPick===bId&&!!bId);
     var p=size==='sm'?'3px 5px':'5px 7px';
     var fs=size==='sm'?'10px':'11px';
     var mw=size==='sm'?'105px':'125px';
+    // Result comparison when in resultados mode
+    var realPick=rb?rb[m.id]:null;
+    var pickCorrect=rb&&myPick&&realPick&&myPick===realPick;
+    var pickWrong=rb&&myPick&&realPick&&myPick!==realPick;
+    var borderColor=pickCorrect?'rgba(0,200,83,.6)':pickWrong?'rgba(225,6,0,.4)':'';
 
     function makeRow(team,id,isW){
       var clickable=canEdit&&at&&bt&&!!id;
+      var isReal=rb&&id&&realPick===id;
       var rowClass='bt'+(isW?' winner':'')+((!team)?' tbd':'')+(clickable?' clickable':'');
+      var extraStyle=isReal&&rb?';border-left-color:'+(pickCorrect?'#00C853':'#E10600')+'!important':'';
       var onclick=clickable?' onclick="pickBracket(\''+uid+'\',\''+m.id+'\',\''+id+'\')"':'';
-      var inner=team?('<span style="font-size:'+(size==='sm'?'12px':'14px')+';line-height:1">'+team.f+'</span><span style="margin-left:3px">'+team.n+'</span>'+(isW?'<span style="margin-left:auto;font-size:9px">✓</span>':'')):'<span>Por definir</span>';
-      return '<div class="'+rowClass+'" style="padding:'+p+';font-size:'+fs+'"'+onclick+'>'+inner+'</div>';
+      var inner=team?('<span style="font-size:'+(size==='sm'?'12px':'14px')+';line-height:1">'+team.f+'</span><span style="margin-left:3px">'+team.n+'</span>'+(isW&&!rb?'<span style="margin-left:auto;font-size:9px">✓</span>':isW&&pickCorrect?'<span style="margin-left:auto;font-size:9px;color:#00C853">+✓</span>':isW&&pickWrong?'<span style="margin-left:auto;font-size:9px;color:#ff6b6b">✗</span>':'')):'<span>Por definir</span>';
+      return '<div class="'+rowClass+'" style="padding:'+p+';font-size:'+fs+extraStyle+'"'+onclick+'>'+inner+'</div>';
     }
 
-    return '<div class="bm'+(bp[m.id]?' picked':'')+'" style="min-width:'+mw+'">'
+    var borderStyle=borderColor?'border-color:'+borderColor+';':'';
+    return '<div class="bm'+(myPick?' picked':'')+'" style="min-width:'+mw+';'+borderStyle+'">'
       +makeRow(at,aId,aw)
       +makeRow(bt,bId,bw)
       +'</div>';
@@ -2527,12 +2496,12 @@ function renderUserList(){
     +Object.keys(S.users).map(function(uid){
       var u=S.users[uid];
       var unlocked=u.unlocked||false;
-      var bothClosed=!p1&&!p2;
       return '<div style="background:var(--dark2);border:1px solid '+(unlocked?'rgba(200,168,75,.4)':'var(--border)')+';border-radius:var(--r);padding:6px 8px;margin-bottom:6px">'
-        +'<div style="display:grid;grid-template-columns:1fr 1fr 36px;gap:4px;align-items:center;margin-bottom:4px">'
+        +'<div style="display:grid;grid-template-columns:1fr 1fr 36px 32px;gap:4px;align-items:center;margin-bottom:4px">'
         +'<input id="en-'+uid+'" value="'+u.name+'" style="padding:5px 7px;background:var(--dark3);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:12px">'
         +'<input id="ep-'+uid+'" value="'+u.pass+'" style="padding:5px 7px;background:var(--dark3);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:12px">'
         +'<button class="btn-save" style="padding:4px 8px;font-size:14px" onclick="saveUserEdit(\''+uid+'\')">✓</button>'
+        +(u.isAdmin?'<div></div>':'<button onclick="deleteUser(\''+uid+'\')" style="padding:4px 6px;background:transparent;border:1px solid rgba(225,6,0,.4);border-radius:var(--r);color:#E10600;cursor:pointer;font-size:13px" title="Eliminar">✕</button>')
         +'</div>'
         +'<div style="display:flex;align-items:center;gap:8px">'
         +'<span style="font-size:10px;color:var(--text3)">'+uid+(u.isAdmin?' <span style="color:var(--gold)">ADMIN</span>':'')+'</span>'
@@ -2544,6 +2513,16 @@ function renderUserList(){
         +'</div>'
         +'</div>';
     }).join('');
+}
+
+function deleteUser(uid){
+  if(uid==='pablo') return; // never delete admin
+  if(!confirm('¿Eliminar a '+S.users[uid].name+'? Se borrará también su quiniela.')) return;
+  delete S.users[uid];
+  if(S.quinelas&&S.quinelas[uid]) delete S.quinelas[uid];
+  saveAdminState(null);
+  renderUserList();
+  renderAdminAllQuinelas();
 }
 
 function toggleUserLock(uid){
