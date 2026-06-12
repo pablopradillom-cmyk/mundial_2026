@@ -319,11 +319,13 @@ body{background:var(--black);color:var(--text);font-family:var(--fb);}
             <option value="">— Elige portero —</option>
           </select></div>
       </div>
-      <div class="admin-label">Tabla de goleadores del Mundial (introduce goles manualmente)</div>
+      <div class="admin-label" style="margin-bottom:.5rem">Tabla de goleadores del Mundial — el primero de la lista es el máximo goleador</div>
       <div id="goals-table-wrap" style="margin-bottom:1rem"></div>
-      <div style="display:flex;gap:8px;margin-bottom:1rem">
-        <input id="new-scorer-name" placeholder="Nombre del jugador" style="flex:1;padding:7px 10px;background:var(--dark3);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:13px">
-        <input id="new-scorer-goals" type="number" min="0" placeholder="Goles" style="width:70px;padding:7px 10px;background:var(--dark3);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:13px">
+      <div style="display:flex;gap:8px;margin-bottom:1rem;align-items:center;flex-wrap:wrap">
+        <div class="admin-label" style="margin:0;white-space:nowrap">Añadir jugador:</div>
+        <select id="new-scorer-name" style="flex:1;min-width:180px;padding:7px 10px;background:var(--dark3);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:13px">
+          <option value="">— Elige jugador —</option>
+        </select>
         <select id="new-scorer-nat" style="padding:7px 10px;background:var(--dark3);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:13px">
           <option value="world">🌍 Mundial</option>
           <option value="esp">🇪🇸 España</option>
@@ -2182,6 +2184,21 @@ function renderAdminTab(){
   renderPhaseControls();
   renderPlayerGoals();
   renderGoalsTable();
+  // Populate add-scorer dropdown with full world players list
+  var nsSel=document.getElementById('new-scorer-name');
+  if(nsSel&&nsSel.options.length<=1){
+    WORLD_PLAYERS.forEach(function(p){
+      var o=document.createElement('option');
+      o.value=p;o.textContent=p;nsSel.appendChild(o);
+    });
+    // Also add Spanish players not already in world list
+    ESP_PLAYERS.forEach(function(p){
+      if(!WORLD_PLAYERS.includes(p)){
+        var o=document.createElement('option');
+        o.value=p;o.textContent=p;nsSel.appendChild(o);
+      }
+    });
+  }
   renderUserList();
   renderAdminAllQuinelas();
   var sc=S.scorers||{};
@@ -2374,9 +2391,28 @@ function saveGroupResults(){
 
 function setBracketResult(mid,tid){
   if(!S.results.bracket) S.results.bracket={};
-  S.results.bracket[mid]=tid;
+  if(S.results.bracket[mid]===tid){
+    // Clicking same winner again = deselect + clear downstream
+    delete S.results.bracket[mid];
+    clearAdminBracketDownstream(mid);
+  } else {
+    S.results.bracket[mid]=tid;
+    clearAdminBracketDownstream(mid);
+  }
   saveAdminState(null);
   renderAdminResults();
+}
+
+function clearAdminBracketDownstream(mid){
+  if(!S.results.bracket) return;
+  ALL_MATCHES.forEach(function(m){
+    if(m.a==='W:'+mid||m.b==='W:'+mid){
+      if(S.results.bracket[m.id]){
+        delete S.results.bracket[m.id];
+        clearAdminBracketDownstream(m.id);
+      }
+    }
+  });
 }
 
 function saveBracketResults(){
@@ -2388,52 +2424,108 @@ function renderGoalsTable(){
   var wrap=document.getElementById('goals-table-wrap');
   if(!wrap) return;
   var gt=(S.scorers&&S.scorers.goalsTable)||[];
-  if(!gt.length){wrap.innerHTML='<div style="color:var(--text3);font-size:12px;margin-bottom:.5rem">Sin goles registrados aún.</div>';return;}
+  // Sort by goals desc — first is max scorer
   var sorted=gt.slice().sort(function(a,b){return b.goals-a.goals;});
-  wrap.innerHTML='<div style="overflow-x:auto"><table class="res-table" style="min-width:300px"><thead><tr>'
-    +'<th>#</th><th>Jugador</th><th style="text-align:center">Goles</th><th>Nac.</th><th></th>'
-    +'</tr></thead><tbody>'
-    +sorted.map(function(entry,i){
-      return '<tr><td style="color:var(--text3);font-size:11px">'+(i+1)+'</td>'
-        +'<td style="font-weight:600">'+entry.name+'</td>'
-        +'<td style="text-align:center;font-family:var(--fd);font-size:18px;color:var(--gold)">'+entry.goals+'</td>'
-        +'<td>'+(entry.nat==='esp'?'🇪🇸':'🌍')+'</td>'
-        +'<td style="display:flex;gap:4px">'
-        +'<button onclick="updateGoalsEntry(\''+entry.name.replace(/'/g,"\\'")+'\',-1)" style="padding:2px 7px;background:transparent;border:1px solid var(--border);border-radius:3px;color:var(--text3);cursor:pointer;font-size:11px">-</button>'
-        +'<button onclick="updateGoalsEntry(\''+entry.name.replace(/'/g,"\\'")+'\')" style="padding:2px 7px;background:transparent;border:1px solid var(--border);border-radius:3px;color:var(--text3);cursor:pointer;font-size:11px">+</button>'
-        +'<button onclick="removeGoalsEntry(\''+entry.name.replace(/'/g,"\\'")+'\')" style="padding:2px 7px;background:transparent;border:1px solid rgba(225,6,0,.3);border-radius:3px;color:#E10600;cursor:pointer;font-size:11px">✕</button>'
-        +'</td></tr>';
-    }).join('')
-    +'</tbody></table></div>';
+
+  // Find who picked each player
+  var pickersByPlayer={};
+  Object.keys(S.users||{}).forEach(function(uid){
+    var q=S.quinelas[uid]||{};
+    ['topScorer','espScorer'].forEach(function(field){
+      var v=(q[field]||'').toLowerCase().trim();
+      if(v){
+        if(!pickersByPlayer[v]) pickersByPlayer[v]=[];
+        pickersByPlayer[v].push(S.users[uid].name);
+      }
+    });
+  });
+
+  if(!sorted.length){
+    wrap.innerHTML='<div style="color:var(--text3);font-size:12px;padding:8px 0">Sin goleadores aún. Añade jugadores con el desplegable.</div>';
+    // Auto-set max scorers to empty
+    return;
+  }
+
+  var h='<div style="overflow-x:auto"><table class="res-table" style="min-width:420px"><thead><tr>'
+    +'<th>#</th><th>Jugador</th><th style="text-align:center">Goles</th>'
+    +'<th>Nac.</th><th>Elegido por</th><th></th>'
+    +'</tr></thead><tbody>';
+
+  sorted.forEach(function(entry,i){
+    var eLow=entry.name.toLowerCase().trim();
+    var pickers=pickersByPlayer[eLow]||[];
+    var isFirst=i===0;
+    h+='<tr style="'+(isFirst?'background:rgba(200,168,75,.05)':'')+'">';
+    h+='<td style="font-family:var(--fd);font-size:16px;color:'+(isFirst?'var(--gold)':'var(--text3)')+'">'+( isFirst?'👑':(i+1))+'</td>';
+    h+='<td style="font-weight:600;color:'+(isFirst?'var(--gold)':'var(--text)')+'">'+entry.name+'</td>';
+    h+='<td style="text-align:center">'
+      +'<div style="display:flex;align-items:center;justify-content:center;gap:4px">'
+      +'<button onclick="updateGoalsEntry(\''+entry.name.replace(/'/g,"\\'")+'\',-1)" style="padding:2px 8px;background:transparent;border:1px solid var(--border);border-radius:3px;color:var(--text3);cursor:pointer;font-size:12px;line-height:1.4">−</button>'
+      +'<span style="font-family:var(--fd);font-size:20px;color:'+(entry.goals>0?'var(--gold)':'var(--text3)')+';min-width:28px;text-align:center">'+entry.goals+'</span>'
+      +'<button onclick="updateGoalsEntry(\''+entry.name.replace(/'/g,"\\'")+'\',1)" style="padding:2px 8px;background:transparent;border:1px solid var(--border);border-radius:3px;color:var(--text3);cursor:pointer;font-size:12px;line-height:1.4">+</button>'
+      +'</div></td>';
+    h+='<td>'+(entry.nat==='esp'?'🇪🇸':'🌍')+'</td>';
+    h+='<td style="font-size:11px;color:'+(pickers.length?'var(--text2)':'var(--text3)')+'">'+( pickers.length?pickers.join(', '):'—')+'</td>';
+    h+='<td><button data-name="'+entry.name.replace(/"/g,'&quot;')+'" onclick="removeGoalsEntryBtn(this)" style="padding:2px 6px;background:transparent;border:1px solid rgba(225,6,0,.3);border-radius:3px;color:#E10600;cursor:pointer;font-size:11px">✕</button></td>';
+    h+='</tr>';
+  });
+  h+='</tbody></table></div>';
+
+  // Auto-derive top scorers from table
+  var worldTop=sorted[0]?sorted[0].name:'';
+  var espSorted=sorted.filter(function(e){return e.nat==='esp';});
+  var espTop=espSorted[0]?espSorted[0].name:'';
+  if(!S.scorers) S.scorers={};
+  S.scorers.world={name:worldTop};
+  S.scorers.spain={name:espTop};
+  // Update selects if they exist
+  var ws=document.getElementById('top-scorer-name');
+  var es=document.getElementById('esp-scorer-name');
+  if(ws&&worldTop){
+    // Try to set value, if not in list just note it
+    ws.value=worldTop;
+    if(!ws.value) ws.value=''; // not in list
+  }
+  if(es&&espTop){
+    es.value=espTop;
+    if(!es.value) es.value='';
+  }
+  // Also update player goals for scoring
+  syncPlayerGoalsFromTable();
+
+  wrap.innerHTML=h;
 }
 
 function addGoalsEntry(){
-  var name=document.getElementById('new-scorer-name').value.trim();
-  var goals=parseInt(document.getElementById('new-scorer-goals').value)||0;
+  var sel=document.getElementById('new-scorer-name');
+  var name=sel?sel.value.trim():'';
   var nat=document.getElementById('new-scorer-nat').value;
   if(!name) return;
   if(!S.scorers) S.scorers={};
   if(!S.scorers.goalsTable) S.scorers.goalsTable=[];
   var existing=S.scorers.goalsTable.filter(function(e){return e.name.toLowerCase()===name.toLowerCase();})[0];
-  if(existing){ existing.goals=goals; existing.nat=nat; }
-  else S.scorers.goalsTable.push({name:name,goals:goals,nat:nat});
-  // Also update playerGoals for scoring
+  if(existing){ existing.nat=nat; }
+  else S.scorers.goalsTable.push({name:name,goals:0,nat:nat});
   syncPlayerGoalsFromTable();
   saveAdminState('scorers-msg');
   renderGoalsTable();
-  document.getElementById('new-scorer-name').value='';
-  document.getElementById('new-scorer-goals').value='';
+  if(sel) sel.value='';
 }
 
 function updateGoalsEntry(name,delta){
   if(!S.scorers||!S.scorers.goalsTable) return;
   var entry=S.scorers.goalsTable.filter(function(e){return e.name===name;})[0];
   if(!entry) return;
-  entry.goals=Math.max(0,(entry.goals||0)+(delta===undefined?1:delta));
+  entry.goals=Math.max(0,(entry.goals||0)+(delta===undefined?1:parseInt(delta)));
   syncPlayerGoalsFromTable();
   saveAdminState(null);
-  renderGoalsTable();
+  renderGoalsTable(); // this also auto-updates world/esp top scorers
   renderPlayerGoals();
+}
+
+function removeGoalsEntryBtn(btn){
+  var name=btn.getAttribute('data-name');
+  removeGoalsEntry(name);
 }
 
 function removeGoalsEntry(name){
