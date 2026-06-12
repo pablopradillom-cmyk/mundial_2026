@@ -1600,7 +1600,10 @@ function renderResultadosTab(){
   h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px">';
   GROUPS.forEach(function(grp){
     var myOrd=getGroupOrdered(grp.id,uid);
-    var realOrd=(res.groups&&res.groups[grp.id])||[];
+    // Use admin results if available, otherwise empty (pending)
+    var realOrd=(res.groups&&res.groups[grp.id]&&res.groups[grp.id].length===4)
+      ? res.groups[grp.id]
+      : [];
     var realTop2=realOrd.slice(0,2);
     h+='<div style="background:var(--dark2);border:1px solid var(--border2);border-radius:var(--r);overflow:hidden">';
     h+='<div style="background:var(--gold);color:var(--black);font-family:var(--fd);font-size:14px;letter-spacing:2px;text-align:center;padding:4px">GRUPO '+grp.id+'</div>';
@@ -2375,14 +2378,20 @@ function saveAdminState(msgId){
 }
 
 function saveGroupResults(){
+  if(!S.results.groups) S.results.groups={};
   var q32=[];
+  // Save all 12 group orderings explicitly
   GROUPS.forEach(function(g){
-    var p=(S.results.groups&&S.results.groups[g.id])||g.teams.map(function(t){return t.id;});
+    var p=(S.results.groups[g.id]&&S.results.groups[g.id].length===4)
+      ? S.results.groups[g.id]
+      : g.teams.map(function(t){return t.id;});
+    S.results.groups[g.id]=p; // ensure it's stored
     q32.push(p[0],p[1]);
   });
-  var adminThirds=(S.results.groups&&S.results.groups.thirds)||[];
+  // Add qualifying thirds (best 8)
+  var adminThirds=(S.results.groups.thirds)||[];
   adminThirds.slice(0,8).forEach(function(gid){
-    var p=(S.results.groups&&S.results.groups[gid])||GROUPS.filter(function(g){return g.id===gid;})[0].teams.map(function(t){return t.id;});
+    var p=S.results.groups[gid]||GROUPS.filter(function(g){return g.id===gid;})[0].teams.map(function(t){return t.id;});
     if(p[2]) q32.push(p[2]);
   });
   S.results.groups.qualified=q32;
