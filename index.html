@@ -113,6 +113,7 @@ body{background:var(--black);color:var(--text);font-family:var(--fb);}
     <div class="topbar-logo">MUNDIAL <span>2026</span></div>
     <button class="topbar-btn active" id="nav-standings" onclick="switchTab('standings')">Clasificación</button>
     <button class="topbar-btn" id="nav-normas" onclick="switchTab('normas')">Normas</button>
+    <button class="topbar-btn" id="nav-resultados" onclick="switchTab('resultados')">Resultados</button>
     <button class="topbar-btn" id="nav-quinela" onclick="switchTab('quinela')">Mi Quiniela</button>
     <button class="topbar-btn" id="nav-admin" onclick="switchTab('admin')" style="display:none">Admin</button>
     <div class="user-chip" onclick="logout()">
@@ -280,6 +281,10 @@ body{background:var(--black);color:var(--text);font-family:var(--fb);}
     </div>
   </div>
 
+  <div class="tab-page" id="tab-resultados">
+    <div id="resultados-content"></div>
+  </div>
+
   <div class="tab-page" id="tab-quinela">
     <div class="page-header" style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
       <h1>Mi <span>Quiniela</span></h1>
@@ -314,9 +319,20 @@ body{background:var(--black);color:var(--text);font-family:var(--fb);}
             <option value="">— Elige portero —</option>
           </select></div>
       </div>
-      <div class="admin-label">Goles por jugador elegido (+1pt/gol)</div>
+      <div class="admin-label">Tabla de goleadores del Mundial (introduce goles manualmente)</div>
+      <div id="goals-table-wrap" style="margin-bottom:1rem"></div>
+      <div style="display:flex;gap:8px;margin-bottom:1rem">
+        <input id="new-scorer-name" placeholder="Nombre del jugador" style="flex:1;padding:7px 10px;background:var(--dark3);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:13px">
+        <input id="new-scorer-goals" type="number" min="0" placeholder="Goles" style="width:70px;padding:7px 10px;background:var(--dark3);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:13px">
+        <select id="new-scorer-nat" style="padding:7px 10px;background:var(--dark3);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:13px">
+          <option value="world">🌍 Mundial</option>
+          <option value="esp">🇪🇸 España</option>
+        </select>
+        <button class="btn-save" onclick="addGoalsEntry()">+ Añadir</button>
+      </div>
+      <div class="admin-label">Goles de jugadores elegidos en porras (+1pt/gol — se actualiza desde tabla de arriba)</div>
       <div id="player-goals-wrap" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px;margin-bottom:1rem"></div>
-      <div style="text-align:right"><button class="btn-save" onclick="saveScorers()">Guardar</button><div id="scorers-msg" style="font-size:12px;margin-top:4px"></div></div>
+      <div style="text-align:right"><button class="btn-save" onclick="saveScorers()">Guardar todo</button><div id="scorers-msg" style="font-size:12px;margin-top:4px"></div></div>
     </div>
     <div class="card">
       <div class="section-title">👥 Jugadores</div>
@@ -1421,10 +1437,291 @@ function switchTab(tab){
   if(tab==='standings') renderStandings();
   if(tab==='quinela') renderQuinelaTab();
   if(tab==='admin') renderAdminTab();
+  if(tab==='resultados') renderResultadosTab();
   // normas is static HTML, no render needed
 }
 
-// ── STANDINGS ─────────────────────────────────────────────
+// ── RESULTADOS TAB ────────────────────────────────────────
+function renderResultadosTab(){
+  var div=document.getElementById('resultados-content');
+  if(!div) return;
+  var uid=currentUser;
+  var q=S.quinelas[uid]||{};
+  var res=S.results||{};
+  var sc=S.scorers||{};
+  var r16actual=(res.groups&&res.groups.qualified)||[];
+  var br_real=(res.bracket)||{};
+  var h='';
+
+  // ── PREMIOS INDIVIDUALES ──────────────────────────────────
+  h+='<div class="card" style="border-color:rgba(200,168,75,.25);margin-bottom:1rem">';
+  h+='<div style="font-family:var(--fd);font-size:18px;letter-spacing:1.5px;color:var(--gold);margin-bottom:1rem">★ PREMIOS INDIVIDUALES</div>';
+
+  // Helper: get all picks for a field across all players
+  function getAllPicks(field){
+    var picks={};
+    Object.keys(S.users||{}).forEach(function(u){
+      var v=(S.quinelas[u]&&S.quinelas[u][field])||'';
+      if(v) picks[v.toLowerCase().trim()]=v;
+    });
+    return picks;
+  }
+
+  // Goals table display
+  function goalsTable(natFilter, myPick, actualWinner, allPicks){
+    var gt=(sc.goalsTable||[]).filter(function(e){return natFilter==='all'||e.nat===natFilter;});
+    var myPickLow=myPick?myPick.toLowerCase().trim():'';
+    var actualLow=actualWinner?actualWinner.toLowerCase().trim():'';
+    var allPicksLow={};
+    Object.keys(allPicks||{}).forEach(function(k){allPicksLow[k.toLowerCase().trim()]=k;});
+
+    // Merge: add picked players not yet in goals table
+    Object.keys(allPicks||{}).forEach(function(k){
+      var kLow=k.toLowerCase().trim();
+      if(!gt.filter(function(e){return e.name.toLowerCase().trim()===kLow;}).length){
+        gt.push({name:allPicks[k],goals:0,nat:natFilter==='esp'?'esp':'world'});
+      }
+    });
+    if(!gt.length) return '<div style="color:var(--text3);font-size:12px;padding:8px">Sin datos aún</div>';
+
+    var sorted=gt.slice().sort(function(a,b){return b.goals-a.goals;});
+    var out='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:5px">';
+    sorted.forEach(function(entry,i){
+      var eLow=entry.name.toLowerCase().trim();
+      var isMe=eLow===myPickLow;
+      var isWinner=eLow===actualLow&&actualLow;
+      var isPicked=!!allPicksLow[eLow];
+      var bc=isWinner?'#00C853':isMe?'rgba(200,168,75,.6)':isPicked?'rgba(255,255,255,.15)':'var(--border)';
+      var bg=isWinner?'rgba(0,200,83,.08)':isMe?'rgba(200,168,75,.1)':'transparent';
+      var textColor=isWinner?'#00C853':isMe?'var(--gold)':isPicked?'var(--text)':'var(--text3)';
+      out+='<div style="display:flex;align-items:center;gap:7px;padding:6px 10px;border:1px solid '+bc+';border-radius:var(--r);background:'+bg+'">';
+      out+='<span style="font-family:var(--fd);font-size:20px;color:'+( isWinner?'#00C853':entry.goals>0?'var(--gold)':'var(--text3)')+';min-width:28px">'+entry.goals+'</span>';
+      out+='<span style="font-size:12px;font-weight:'+(isMe?'700':'500')+';color:'+textColor+';flex:1">'+entry.name+'</span>';
+      if(isWinner) out+='<span style="font-size:14px">👑</span>';
+      else if(isMe) out+='<span style="font-size:10px;color:var(--gold);font-family:var(--fd)">yo</span>';
+      out+='</div>';
+    });
+    out+='</div>';
+    return out;
+  }
+
+  // Awards table (MVP / GK)
+  function awardTable(field, actualWinner){
+    var myPickRaw=(S.quinelas[uid]&&S.quinelas[uid][field])||'';
+    var myPickLow=myPickRaw.toLowerCase().trim();
+    var actualLow=actualWinner?actualWinner.toLowerCase().trim():'';
+    // Collect all picks
+    var picks={};
+    Object.keys(S.users||{}).forEach(function(u){
+      var v=(S.quinelas[u]&&S.quinelas[u][field])||'';
+      if(v){
+        var k=v.toLowerCase().trim();
+        if(!picks[k]) picks[k]={name:v,count:0,pickers:[]};
+        picks[k].count++;
+        picks[k].pickers.push(S.users[u].name);
+      }
+    });
+    if(!Object.keys(picks).length) return '<div style="color:var(--text3);font-size:12px;padding:8px">Nadie ha elegido aún</div>';
+    var sorted=Object.values(picks).sort(function(a,b){return b.count-a.count;});
+    var out='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:5px">';
+    sorted.forEach(function(entry){
+      var eLow=entry.name.toLowerCase().trim();
+      var isMe=eLow===myPickLow;
+      var isWinner=eLow===actualLow&&actualLow;
+      var bc=isWinner?'#00C853':isMe?'rgba(200,168,75,.6)':'rgba(255,255,255,.12)';
+      var bg=isWinner?'rgba(0,200,83,.08)':isMe?'rgba(200,168,75,.08)':'transparent';
+      out+='<div style="display:flex;align-items:center;gap:7px;padding:7px 10px;border:1px solid '+bc+';border-radius:var(--r);background:'+bg+'">';
+      out+='<span style="font-size:12px;font-weight:'+(isMe?700:500)+';color:'+(isWinner?'#00C853':isMe?'var(--gold)':'var(--text)')+';flex:1">'+entry.name+'</span>';
+      out+='<span style="font-size:10px;color:var(--text3)">'+entry.count+'x</span>';
+      if(isWinner) out+='<span style="font-size:14px">👑</span>';
+      else if(isMe) out+='<span style="font-size:10px;color:var(--gold);font-family:var(--fd)">yo</span>';
+      out+='</div>';
+    });
+    out+='</div>';
+    return out;
+  }
+
+  var myTop=q.topScorer||'';
+  var myEsp=q.espScorer||'';
+  var topActual=sc.world&&sc.world.name?sc.world.name:'';
+  var espActual=sc.spain&&sc.spain.name?sc.spain.name:'';
+  var myTopLow=myTop.toLowerCase().trim();
+  var topActualLow=topActual.toLowerCase().trim();
+  var myEspLow=myEsp.toLowerCase().trim();
+  var espActualLow=espActual.toLowerCase().trim();
+  var myMvp=q.mvp||'';
+  var myGk=q.goalkeeper||'';
+  var myMvpLow=myMvp.toLowerCase().trim();
+  var myGkLow=myGk.toLowerCase().trim();
+  var mvpActualLow=(sc.mvp||'').toLowerCase().trim();
+  var gkActualLow=(sc.goalkeeper||'').toLowerCase().trim();
+
+  // Goleador Mundial
+  h+='<div style="margin-bottom:1.25rem">';
+  h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:.5rem">';
+  h+='<span style="font-family:var(--fd);font-size:15px;letter-spacing:1px">⚽ GOLEADOR MUNDIAL</span>';
+  if(myTop){
+    var topOk=myTopLow===topActualLow&&topActualLow;
+    h+='<span style="font-size:11px;padding:2px 8px;border-radius:12px;background:'+(topOk?'rgba(0,200,83,.1)':'rgba(200,168,75,.1)')+';border:1px solid '+(topOk?'rgba(0,200,83,.4)':'rgba(200,168,75,.3)')+';color:'+(topOk?'#00C853':'var(--gold)')+'">Tu elección: <b>'+myTop+'</b>'+(topOk?' ✓ +10pts':'')+'</span>';
+  }
+  h+='</div>';
+  h+=goalsTable('all', myTop, topActual, getAllPicks('topScorer'));
+  h+='</div>';
+
+  // Goleador España
+  h+='<div style="margin-bottom:1.25rem">';
+  h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:.5rem">';
+  h+='<span style="font-family:var(--fd);font-size:15px;letter-spacing:1px">🇪🇸 GOLEADOR ESPAÑOL</span>';
+  if(myEsp){
+    var espOk=myEspLow===espActualLow&&espActualLow;
+    h+='<span style="font-size:11px;padding:2px 8px;border-radius:12px;background:'+(espOk?'rgba(0,200,83,.1)':'rgba(200,168,75,.1)')+';border:1px solid '+(espOk?'rgba(0,200,83,.4)':'rgba(200,168,75,.3)')+';color:'+(espOk?'#00C853':'var(--gold)')+'">Tu elección: <b>'+myEsp+'</b>'+(espOk?' ✓ +10pts':'')+'</span>';
+  }
+  h+='</div>';
+  h+=goalsTable('esp', myEsp, espActual, getAllPicks('espScorer'));
+  h+='</div>';
+
+  // MVP
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">';
+  h+='<div>';
+  h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:.5rem">';
+  h+='<span style="font-family:var(--fd);font-size:15px;letter-spacing:1px">🏅 MVP</span>';
+  if(myMvp){
+    var mvpOk=myMvpLow===mvpActualLow&&mvpActualLow;
+    h+='<span style="font-size:11px;padding:2px 8px;border-radius:12px;background:'+(mvpOk?'rgba(0,200,83,.1)':'rgba(200,168,75,.1)')+';border:1px solid '+(mvpOk?'rgba(0,200,83,.4)':'rgba(200,168,75,.3)')+';color:'+(mvpOk?'#00C853':'var(--gold)')+'"><b>'+myMvp+'</b>'+(mvpOk?' ✓ +10pts':'')+'</span>';
+  }
+  h+='</div>';
+  h+=awardTable('mvp', sc.mvp||'');
+  h+='</div>';
+
+  // GK
+  h+='<div>';
+  h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:.5rem">';
+  h+='<span style="font-family:var(--fd);font-size:15px;letter-spacing:1px">🧤 MEJOR PORTERO</span>';
+  if(myGk){
+    var gkOk=myGkLow===gkActualLow&&gkActualLow;
+    h+='<span style="font-size:11px;padding:2px 8px;border-radius:12px;background:'+(gkOk?'rgba(0,200,83,.1)':'rgba(200,168,75,.1)')+';border:1px solid '+(gkOk?'rgba(0,200,83,.4)':'rgba(200,168,75,.3)')+';color:'+(gkOk?'#00C853':'var(--gold)')+'"><b>'+myGk+'</b>'+(gkOk?' ✓ +10pts':'')+'</span>';
+  }
+  h+='</div>';
+  h+=awardTable('goalkeeper', sc.goalkeeper||'');
+  h+='</div>';
+  h+='</div></div>'; // close premios card
+
+  // ── FASE DE GRUPOS ────────────────────────────────────────
+  h+='<div class="card">';
+  h+='<div style="font-family:var(--fd);font-size:18px;letter-spacing:1.5px;color:var(--gold);margin-bottom:1rem">FASE DE GRUPOS</div>';
+  h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px">';
+  GROUPS.forEach(function(grp){
+    var myOrd=getGroupOrdered(grp.id,uid);
+    var realOrd=(res.groups&&res.groups[grp.id])||[];
+    var realTop2=realOrd.slice(0,2);
+    h+='<div style="background:var(--dark2);border:1px solid var(--border2);border-radius:var(--r);overflow:hidden">';
+    h+='<div style="background:var(--gold);color:var(--black);font-family:var(--fd);font-size:14px;letter-spacing:2px;text-align:center;padding:4px">GRUPO '+grp.id+'</div>';
+    h+='<div style="display:grid;grid-template-columns:1fr 1px 1fr">';
+    // My prediction
+    h+='<div style="padding:6px 8px">';
+    h+='<div style="font-size:9px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;text-align:center;margin-bottom:4px">Mi predicción</div>';
+    myOrd.forEach(function(team,i){
+      var inReal=realTop2.indexOf(team.id)>=0;
+      var posColors=['#FFD700','#C0C0C0','rgba(200,168,75,.5)','var(--text3)'];
+      h+='<div style="display:flex;align-items:center;gap:4px;padding:2px 4px;border-radius:3px;background:'+(i<2&&inReal?'rgba(0,200,83,.06)':'transparent')+'">';
+      h+='<span style="font-size:9px;color:'+posColors[i]+';min-width:14px;font-family:var(--fd)">'+(i+1)+'º</span>';
+      h+='<span style="font-size:13px">'+team.f+'</span>';
+      h+='<span style="font-size:11px;flex:1;color:'+(i<2&&inReal?'#00C853':i<2?'var(--text2)':'var(--text3)')+'">'+team.n+'</span>';
+      if(i<2&&inReal) h+='<span style="font-size:9px;color:#00C853">+1</span>';
+      h+='</div>';
+    });
+    h+='</div>';
+    // Divider
+    h+='<div style="background:var(--border)"></div>';
+    // Real result
+    h+='<div style="padding:6px 8px">';
+    h+='<div style="font-size:9px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;text-align:center;margin-bottom:4px">Resultado real</div>';
+    if(realOrd.length){
+      realOrd.forEach(function(tid,i){
+        var t=teamById(tid);
+        var posColors=['#FFD700','#C0C0C0','rgba(200,168,75,.5)','var(--text3)'];
+        h+='<div style="display:flex;align-items:center;gap:4px;padding:2px 4px">';
+        h+='<span style="font-size:9px;color:'+posColors[i]+';min-width:14px;font-family:var(--fd)">'+(i+1)+'º</span>';
+        h+='<span style="font-size:13px">'+t.f+'</span>';
+        h+='<span style="font-size:11px;flex:1;color:'+(i<2?'var(--text)':'var(--text3)')+'">'+t.n+'</span>';
+        h+='</div>';
+      });
+    } else {
+      h+='<div style="padding:8px;text-align:center;color:var(--text3);font-size:11px">Pendiente</div>';
+    }
+    h+='</div></div></div>';
+  });
+  h+='</div></div>';
+
+  // ── MEJORES TERCEROS ──────────────────────────────────────
+  h+='<div class="card">';
+  h+='<div style="font-family:var(--fd);font-size:18px;letter-spacing:1.5px;color:var(--gold);margin-bottom:.5rem">MEJORES TERCEROS</div>';
+  h+='<div style="font-size:12px;color:var(--text3);margin-bottom:.75rem">Los 8 terceros que aciertes que pasan a 16avos suman +1 pt.</div>';
+  var myThirds=getTop8Thirds(uid).map(function(t){return t.id;});
+  var allThirds=GROUPS.map(function(g){
+    var t=getGroupOrdered(g.id,uid);
+    return t[2]||null;
+  }).filter(Boolean);
+  h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(165px,1fr));gap:5px">';
+  allThirds.forEach(function(team){
+    var isMy=myThirds.indexOf(team.id)>=0;
+    var isReal=r16actual.indexOf(team.id)>=0;
+    var hit=isMy&&isReal;
+    var bc=hit?'#00C853':isMy?'rgba(200,168,75,.5)':isReal?'rgba(255,255,255,.15)':'var(--border)';
+    var bg=hit?'rgba(0,200,83,.08)':isMy?'rgba(200,168,75,.06)':'transparent';
+    h+='<div style="display:flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid '+bc+';border-radius:var(--r);background:'+bg+'">';
+    h+='<span style="font-size:15px">'+team.f+'</span>';
+    h+='<span style="font-size:11px;font-weight:600;flex:1;color:'+(hit?'#00C853':isMy?'var(--text)':'var(--text3)')+'">'+team.n+'</span>';
+    if(hit) h+='<span style="font-size:10px;color:#00C853;font-family:var(--fd)">+1</span>';
+    else if(isMy&&!isReal&&r16actual.length) h+='<span style="font-size:10px;color:var(--text3)">✗</span>';
+    else if(isMy) h+='<span style="font-size:10px;color:var(--gold)">elegido</span>';
+    h+='</div>';
+  });
+  h+='</div></div>';
+
+  // ── BRACKET ───────────────────────────────────────────────
+  var rounds=[
+    {label:'DIECISEISAVOS',ids:['m73','m74','m75','m76','m77','m78','m79','m80','m81','m82','m83','m84','m85','m86','m87','m88'],pts:1},
+    {label:'OCTAVOS',ids:['m89','m90','m91','m92','m93','m94','m95','m96'],pts:2},
+    {label:'CUARTOS',ids:['m97','m98','m99','m100'],pts:4},
+    {label:'SEMIFINALES',ids:['m101','m102'],pts:8},
+    {label:'FINAL',ids:['m103'],pts:10,isLast:true},
+  ];
+  var bp=q.bracket||{};
+
+  rounds.forEach(function(round){
+    h+='<div class="card">';
+    h+='<div style="font-family:var(--fd);font-size:18px;letter-spacing:1.5px;color:var(--gold);margin-bottom:.75rem">'+round.label+' <span style="font-size:13px;color:var(--text3)">+'+round.pts+' pts por equipo acertado</span></div>';
+    var cols=round.isLast?'200px':'165px';
+    h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax('+cols+',1fr));gap:5px">';
+
+    round.ids.forEach(function(mid){
+      var myPick=bp[mid];
+      var realPick=br_real[mid];
+      var hit=myPick&&realPick&&myPick===realPick;
+      var miss=myPick&&realPick&&myPick!==realPick;
+      if(!myPick) return; // skip unpicked matches
+
+      var t=teamById(myPick);
+      var bc=hit?'#00C853':miss?'rgba(225,6,0,.4)':'rgba(255,255,255,.15)';
+      var bg=hit?'rgba(0,200,83,.08)':miss?'rgba(225,6,0,.05)':'transparent';
+      var tc=hit?'#00C853':miss?'#ff6b6b':'var(--text)';
+
+      h+='<div style="display:flex;align-items:center;gap:6px;padding:7px 10px;border:1px solid '+bc+';border-radius:var(--r);background:'+bg+'">';
+      h+='<span style="font-size:15px">'+t.f+'</span>';
+      h+='<span style="font-size:11px;font-weight:600;flex:1;color:'+tc+'">'+t.n+'</span>';
+      if(hit) h+='<span style="font-size:10px;color:#00C853;font-family:var(--fd)">+'+round.pts+'</span>';
+      else if(miss) h+='<span style="font-size:10px;color:#ff6b6b">✗</span>';
+      if(round.isLast&&hit) h+='<span style="font-size:16px">🏆</span>';
+      h+='</div>';
+    });
+    h+='</div></div>';
+  });
+
+  div.innerHTML=h;
+}
+
+
 var sfilt='all';
 
 function renderStandings(){
@@ -1915,6 +2212,7 @@ function populateSelect(id, options, value){
 function renderAdminTab(){
   renderPhaseControls();
   renderPlayerGoals();
+  renderGoalsTable();
   renderUserList();
   renderAdminAllQuinelas();
   var sc=S.scorers||{};
@@ -2117,6 +2415,77 @@ function saveBracketResults(){
 }
 
 
+function renderGoalsTable(){
+  var wrap=document.getElementById('goals-table-wrap');
+  if(!wrap) return;
+  var gt=(S.scorers&&S.scorers.goalsTable)||[];
+  if(!gt.length){wrap.innerHTML='<div style="color:var(--text3);font-size:12px;margin-bottom:.5rem">Sin goles registrados aún.</div>';return;}
+  var sorted=gt.slice().sort(function(a,b){return b.goals-a.goals;});
+  wrap.innerHTML='<div style="overflow-x:auto"><table class="res-table" style="min-width:300px"><thead><tr>'
+    +'<th>#</th><th>Jugador</th><th style="text-align:center">Goles</th><th>Nac.</th><th></th>'
+    +'</tr></thead><tbody>'
+    +sorted.map(function(entry,i){
+      return '<tr><td style="color:var(--text3);font-size:11px">'+(i+1)+'</td>'
+        +'<td style="font-weight:600">'+entry.name+'</td>'
+        +'<td style="text-align:center;font-family:var(--fd);font-size:18px;color:var(--gold)">'+entry.goals+'</td>'
+        +'<td>'+(entry.nat==='esp'?'🇪🇸':'🌍')+'</td>'
+        +'<td style="display:flex;gap:4px">'
+        +'<button onclick="updateGoalsEntry(\''+entry.name.replace(/'/g,"\\'")+'\',-1)" style="padding:2px 7px;background:transparent;border:1px solid var(--border);border-radius:3px;color:var(--text3);cursor:pointer;font-size:11px">-</button>'
+        +'<button onclick="updateGoalsEntry(\''+entry.name.replace(/'/g,"\\'")+'\')" style="padding:2px 7px;background:transparent;border:1px solid var(--border);border-radius:3px;color:var(--text3);cursor:pointer;font-size:11px">+</button>'
+        +'<button onclick="removeGoalsEntry(\''+entry.name.replace(/'/g,"\\'")+'\')" style="padding:2px 7px;background:transparent;border:1px solid rgba(225,6,0,.3);border-radius:3px;color:#E10600;cursor:pointer;font-size:11px">✕</button>'
+        +'</td></tr>';
+    }).join('')
+    +'</tbody></table></div>';
+}
+
+function addGoalsEntry(){
+  var name=document.getElementById('new-scorer-name').value.trim();
+  var goals=parseInt(document.getElementById('new-scorer-goals').value)||0;
+  var nat=document.getElementById('new-scorer-nat').value;
+  if(!name) return;
+  if(!S.scorers) S.scorers={};
+  if(!S.scorers.goalsTable) S.scorers.goalsTable=[];
+  var existing=S.scorers.goalsTable.filter(function(e){return e.name.toLowerCase()===name.toLowerCase();})[0];
+  if(existing){ existing.goals=goals; existing.nat=nat; }
+  else S.scorers.goalsTable.push({name:name,goals:goals,nat:nat});
+  // Also update playerGoals for scoring
+  syncPlayerGoalsFromTable();
+  saveAdminState('scorers-msg');
+  renderGoalsTable();
+  document.getElementById('new-scorer-name').value='';
+  document.getElementById('new-scorer-goals').value='';
+}
+
+function updateGoalsEntry(name,delta){
+  if(!S.scorers||!S.scorers.goalsTable) return;
+  var entry=S.scorers.goalsTable.filter(function(e){return e.name===name;})[0];
+  if(!entry) return;
+  entry.goals=Math.max(0,(entry.goals||0)+(delta===undefined?1:delta));
+  syncPlayerGoalsFromTable();
+  saveAdminState(null);
+  renderGoalsTable();
+  renderPlayerGoals();
+}
+
+function removeGoalsEntry(name){
+  if(!S.scorers||!S.scorers.goalsTable) return;
+  S.scorers.goalsTable=S.scorers.goalsTable.filter(function(e){return e.name!==name;});
+  syncPlayerGoalsFromTable();
+  saveAdminState(null);
+  renderGoalsTable();
+  renderPlayerGoals();
+}
+
+function syncPlayerGoalsFromTable(){
+  // Keep playerGoals in sync with the goals table
+  if(!S.scorers) S.scorers={};
+  S.scorers.playerGoals={};
+  var gt=S.scorers.goalsTable||[];
+  gt.forEach(function(e){
+    S.scorers.playerGoals[e.name.toLowerCase().trim()]=e.goals;
+  });
+}
+
 function renderPlayerGoals(){
   var wrap=document.getElementById('player-goals-wrap');
   if(!wrap) return;
@@ -2129,9 +2498,10 @@ function renderPlayerGoals(){
   if(!names.length){wrap.innerHTML='<div style="color:var(--text3);font-size:12px">Nadie ha elegido goleadores aún.</div>';return;}
   var pg=(S.scorers&&S.scorers.playerGoals)||{};
   wrap.innerHTML=names.map(function(name){
+    var goals=pg[name]||0;
     return '<div style="display:flex;align-items:center;gap:8px;background:var(--dark2);border:1px solid var(--border);border-radius:var(--r);padding:6px 10px">'
       +'<span style="font-size:12px;font-weight:600;flex:1">'+name.charAt(0).toUpperCase()+name.slice(1)+'</span>'
-      +'<input type="number" id="goals-'+name.replace(/\s/g,'_')+'" value="'+(pg[name]||0)+'" min="0" style="width:50px;padding:4px;background:var(--dark3);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:13px;text-align:center">'
+      +'<span style="font-family:var(--fd);font-size:16px;color:var(--gold)">'+goals+'</span>'
       +'<span style="font-size:11px;color:var(--text3)">goles</span></div>';
   }).join('');
 }
@@ -2142,18 +2512,11 @@ function saveScorers(){
   S.scorers.spain={name:document.getElementById('esp-scorer-name').value.trim()};
   S.scorers.mvp=document.getElementById('mvp-name').value.trim();
   S.scorers.goalkeeper=document.getElementById('gk-name').value.trim();
-  var picks={};
-  Object.values(S.quinelas||{}).forEach(function(q){
-    if(q.topScorer) picks[q.topScorer.toLowerCase().trim()]=1;
-    if(q.espScorer) picks[q.espScorer.toLowerCase().trim()]=1;
-  });
-  S.scorers.playerGoals={};
-  Object.keys(picks).forEach(function(name){
-    var el=document.getElementById('goals-'+name.replace(/\s/g,'_'));
-    if(el) S.scorers.playerGoals[name]=parseInt(el.value)||0;
-  });
+  syncPlayerGoalsFromTable();
   saveAdminState('scorers-msg');
 }
+
+
 
 function renderUserList(){
   var div=document.getElementById('user-list');
