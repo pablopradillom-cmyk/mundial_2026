@@ -1502,7 +1502,7 @@ function renderResultadosTab(){
     var picks={};
     Object.keys(S.users||{}).forEach(function(u){
       var v=(S.quinelas[u]&&S.quinelas[u][field])||'';
-      if(v) picks[v.toLowerCase().trim()]=v;
+      if(v) picks[normalizeName(v)]=v;
     });
     return picks;
   }
@@ -1510,15 +1510,15 @@ function renderResultadosTab(){
   // Goals table display
   function goalsTable(natFilter, myPick, actualWinner, allPicks){
     var gt=(sc.goalsTable||[]).filter(function(e){return natFilter==='all'||e.nat===natFilter;});
-    var myPickLow=myPick?myPick.toLowerCase().trim():'';
-    var actualLow=actualWinner?actualWinner.toLowerCase().trim():'';
-    var allPicksLow={};
-    Object.keys(allPicks||{}).forEach(function(k){allPicksLow[k.toLowerCase().trim()]=k;});
+    var myPickNorm=myPick?normalizeName(myPick):'';
+    var actualNorm=actualWinner?normalizeName(actualWinner):'';
+    var allPicksNorm={};
+    Object.keys(allPicks||{}).forEach(function(k){allPicksNorm[normalizeName(k)]=k;});
 
     // Merge: add picked players not yet in goals table
     Object.keys(allPicks||{}).forEach(function(k){
-      var kLow=k.toLowerCase().trim();
-      if(!gt.filter(function(e){return e.name.toLowerCase().trim()===kLow;}).length){
+      var kNorm=normalizeName(k);
+      if(!gt.filter(function(e){return normalizeName(e.name)===kNorm;}).length){
         gt.push({name:allPicks[k],goals:0,nat:natFilter==='esp'?'esp':'world'});
       }
     });
@@ -1527,10 +1527,10 @@ function renderResultadosTab(){
     var sorted=gt.slice().sort(function(a,b){return b.goals-a.goals;});
     var out='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:5px">';
     sorted.forEach(function(entry,i){
-      var eLow=entry.name.toLowerCase().trim();
-      var isMe=eLow===myPickLow;
-      var isWinner=eLow===actualLow&&actualLow;
-      var isPicked=!!allPicksLow[eLow];
+      var eNorm=normalizeName(entry.name);
+      var isMe=eNorm===myPickNorm&&myPickNorm!=='';
+      var isWinner=eNorm===actualNorm&&actualNorm!=='';
+      var isPicked=!!allPicksNorm[eNorm];
       var bc=isWinner?'#00C853':isMe?'rgba(200,168,75,.6)':isPicked?'rgba(255,255,255,.15)':'var(--border)';
       var bg=isWinner?'rgba(0,200,83,.08)':isMe?'rgba(200,168,75,.1)':'transparent';
       var textColor=isWinner?'#00C853':isMe?'var(--gold)':isPicked?'var(--text)':'var(--text3)';
@@ -2839,15 +2839,16 @@ function renderGoalsTable(){
   // Sort by goals desc — first is max scorer
   var sorted=gt.slice().sort(function(a,b){return b.goals-a.goals;});
 
-  // Find who picked each player
+  // Find who picked each player — use normalizeName so accents/case never break the match
   var pickersByPlayer={};
   Object.keys(S.users||{}).forEach(function(uid){
     var q=S.quinelas[uid]||{};
     ['topScorer','espScorer'].forEach(function(field){
-      var v=(q[field]||'').toLowerCase().trim();
+      var v=q[field]||'';
       if(v){
-        if(!pickersByPlayer[v]) pickersByPlayer[v]=[];
-        pickersByPlayer[v].push(S.users[uid].name);
+        var norm=normalizeName(v);
+        if(!pickersByPlayer[norm]) pickersByPlayer[norm]=[];
+        pickersByPlayer[norm].push(S.users[uid].name);
       }
     });
   });
@@ -2864,7 +2865,7 @@ function renderGoalsTable(){
     +'</tr></thead><tbody>';
 
   sorted.forEach(function(entry,i){
-    var eLow=entry.name.toLowerCase().trim();
+    var eLow=normalizeName(entry.name);
     var pickers=pickersByPlayer[eLow]||[];
     var isFirst=i===0;
     h+='<tr style="'+(isFirst?'background:rgba(200,168,75,.05)':'')+'">';
