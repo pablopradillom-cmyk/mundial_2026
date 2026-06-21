@@ -320,12 +320,23 @@ body{background:var(--black);color:var(--text);font-family:var(--fb);}
           </select></div>
       </div>
       <div class="admin-label" style="margin-bottom:.5rem">Tabla de goleadores del Mundial — el primero de la lista es el máximo goleador</div>
+      <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;padding:8px 12px;background:var(--dark2);border:1px solid var(--border2);border-radius:var(--r)">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
+          <input type="checkbox" id="confirm-world-scorer" onchange="toggleScorerConfirmed('world',this.checked)">
+          ⚽ Goleador Mundial definitivo (no provisional)
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
+          <input type="checkbox" id="confirm-esp-scorer" onchange="toggleScorerConfirmed('esp',this.checked)">
+          🇪🇸 Goleador España definitivo (no provisional)
+        </label>
+      </div>
       <div id="dup-suggestions-wrap"></div>
       <div id="goals-table-wrap" style="margin-bottom:1rem"></div>
-      <div style="display:flex;gap:8px;margin-bottom:1rem;align-items:center;flex-wrap:wrap">
+      <div style="display:flex;gap:8px;margin-bottom:.5rem;align-items:center;flex-wrap:wrap">
         <div class="admin-label" style="margin:0;white-space:nowrap">Añadir jugador:</div>
-        <select id="new-scorer-name" style="flex:1;min-width:180px;padding:7px 10px;background:var(--dark3);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:13px">
+        <select id="new-scorer-name" onchange="handleNewScorerSelectChange()" style="flex:1;min-width:180px;padding:7px 10px;background:var(--dark3);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:13px">
           <option value="">— Elige jugador —</option>
+          <option value="__otro__">✏️ Otro jugador (no está en la lista)...</option>
         </select>
         <select id="new-scorer-nat" style="padding:7px 10px;background:var(--dark3);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:13px">
           <option value="world">🌍 Mundial</option>
@@ -333,6 +344,7 @@ body{background:var(--black);color:var(--text);font-family:var(--fb);}
         </select>
         <button class="btn-save" onclick="addGoalsEntry()">+ Añadir</button>
       </div>
+      <input type="text" id="new-scorer-custom" placeholder="Escribe el nombre del jugador" style="display:none;width:100%;padding:7px 10px;background:var(--dark3);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:13px;margin-bottom:1rem">
       <div class="admin-label">Goles de jugadores elegidos en porras (+1pt/gol — se actualiza desde tabla de arriba)</div>
       <div id="player-goals-wrap" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px;margin-bottom:1rem"></div>
       <div style="text-align:right"><button class="btn-save" onclick="saveScorers()">Guardar todo</button><div id="scorers-msg" style="font-size:12px;margin-top:4px"></div></div>
@@ -1286,7 +1298,8 @@ function calcScore(uid){
   });
   getTop8Thirds(uid).forEach(function(t){pred.push(t.id);});
   var r16hits=r16actual.length?pred.filter(function(t){return r16actual.indexOf(t)>=0;}).length:0;
-  bd.groups={pts:r16hits,hits:r16hits,max:32};
+  var groupsConfirmed=!!(res.groups&&res.groups.confirmed);
+  bd.groups={pts:r16hits,hits:r16hits,max:32,provisional:!groupsConfirmed};
   total+=r16hits;
 
   // Bracket: 16avos=1, octavos=2, cuartos=4, semis=8, subcampeon=8, campeon=10
@@ -1335,8 +1348,10 @@ function calcScore(uid){
   var em=(sc.spain&&sc.spain.name||'').toLowerCase().trim();
   var wb=(wm&&wp===wm)?10:0;
   var eb=(em&&ep===em)?10:0;
-  bd.topScorer={pts:wb+wg,bonus:wb,goals:wg,name:q.topScorer||''};
-  bd.espScorer={pts:eb+eg,bonus:eb,goals:eg,name:q.espScorer||''};
+  var worldConfirmed=!!(sc.world&&sc.world.confirmed);
+  var spainConfirmed=!!(sc.spain&&sc.spain.confirmed);
+  bd.topScorer={pts:wb+wg,bonus:wb,goals:wg,name:q.topScorer||'',provisional:!worldConfirmed};
+  bd.espScorer={pts:eb+eg,bonus:eb,goals:eg,name:q.espScorer||'',provisional:!spainConfirmed};
   total+=wb+wg+eb+eg;
 
   // MVP
@@ -1565,22 +1580,27 @@ function renderResultadosTab(){
   var mvpActualLow=(sc.mvp||'').toLowerCase().trim();
   var gkActualLow=(sc.goalkeeper||'').toLowerCase().trim();
 
+  var worldConfirmed2=!!(sc.world&&sc.world.confirmed);
+  var spainConfirmed2=!!(sc.spain&&sc.spain.confirmed);
+
   // ── 4-column premios layout ──
   h+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">';
 
   // Col 1: Goleador Mundial
   var topOk=myTopLow&&myTopLow===topActualLow;
-  h+='<div style="background:var(--dark2);border:1px solid '+(topOk?'rgba(0,200,83,.4)':'var(--border2)')+';border-radius:var(--rl);padding:12px 14px">';
-  h+='<div style="font-family:var(--fd);font-size:13px;letter-spacing:1px;color:var(--gold);margin-bottom:.5rem">⚽ GOLEADOR MUNDIAL</div>';
-  if(myTop) h+='<div style="font-size:11px;color:'+(topOk?'#00C853':'var(--text2)')+';margin-bottom:.5rem;font-weight:600">Tu elección: '+myTop+(topOk?' ✓ +10pts':'')+'</div>';
+  var topProv=topOk&&!worldConfirmed2;
+  h+='<div style="background:var(--dark2);border:1px solid '+(topOk?(topProv?'rgba(255,152,0,.5)':'rgba(0,200,83,.4)'):'var(--border2)')+';border-radius:var(--rl);padding:12px 14px">';
+  h+='<div style="font-family:var(--fd);font-size:13px;letter-spacing:1px;color:var(--gold);margin-bottom:.5rem">⚽ GOLEADOR MUNDIAL'+(topProv?' <span style="font-size:9px;color:#ff9800;font-weight:400">(provisional)</span>':'')+'</div>';
+  if(myTop) h+='<div style="font-size:11px;color:'+(topOk?(topProv?'#ff9800':'#00C853'):'var(--text2)')+';margin-bottom:.5rem;font-weight:600">Tu elección: '+myTop+(topOk?' ✓ +10pts'+(topProv?' *':''):'')+'</div>';
   h+=goalsTable('all',myTop,topActual,getAllPicks('topScorer'));
   h+='</div>';
 
   // Col 2: Goleador España
   var espOk=myEspLow&&myEspLow===espActualLow;
-  h+='<div style="background:var(--dark2);border:1px solid '+(espOk?'rgba(0,200,83,.4)':'var(--border2)')+';border-radius:var(--rl);padding:12px 14px">';
-  h+='<div style="font-family:var(--fd);font-size:13px;letter-spacing:1px;color:var(--gold);margin-bottom:.5rem">🇪🇸 GOLEADOR ESPAÑOL</div>';
-  if(myEsp) h+='<div style="font-size:11px;color:'+(espOk?'#00C853':'var(--text2)')+';margin-bottom:.5rem;font-weight:600">Tu elección: '+myEsp+(espOk?' ✓ +10pts':'')+'</div>';
+  var espProv=espOk&&!spainConfirmed2;
+  h+='<div style="background:var(--dark2);border:1px solid '+(espOk?(espProv?'rgba(255,152,0,.5)':'rgba(0,200,83,.4)'):'var(--border2)')+';border-radius:var(--rl);padding:12px 14px">';
+  h+='<div style="font-family:var(--fd);font-size:13px;letter-spacing:1px;color:var(--gold);margin-bottom:.5rem">🇪🇸 GOLEADOR ESPAÑOL'+(espProv?' <span style="font-size:9px;color:#ff9800;font-weight:400">(provisional)</span>':'')+'</div>';
+  if(myEsp) h+='<div style="font-size:11px;color:'+(espOk?(espProv?'#ff9800':'#00C853'):'var(--text2)')+';margin-bottom:.5rem;font-weight:600">Tu elección: '+myEsp+(espOk?' ✓ +10pts'+(espProv?' *':''):'')+'</div>';
   h+=goalsTable('esp',myEsp,espActual,getAllPicks('espScorer'));
   h+='</div>';
 
@@ -1600,12 +1620,18 @@ function renderResultadosTab(){
   h+=awardTable('goalkeeper',sc.goalkeeper||'');
   h+='</div>';
 
-  h+='</div></div>'; // close grid + card
+  h+='</div>';
+  if(topProv||espProv) h+='<div style="font-size:10px;color:#ff9800;margin-top:.75rem">* Provisional — puede cambiar hasta que el admin confirme el resultado definitivo</div>';
+  h+='</div>'; // close card
 
 
   // ── FASE DE GRUPOS ────────────────────────────────────────
+  var groupsConfirmedFlag=!!(res.groups&&res.groups.confirmed);
   h+='<div class="card">';
-  h+='<div style="font-family:var(--fd);font-size:18px;letter-spacing:1.5px;color:var(--gold);margin-bottom:1rem">FASE DE GRUPOS</div>';
+  h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:1rem">';
+  h+='<span style="font-family:var(--fd);font-size:18px;letter-spacing:1.5px;color:var(--gold)">FASE DE GRUPOS</span>';
+  if(!groupsConfirmedFlag) h+='<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(255,152,0,.1);border:1px solid rgba(255,152,0,.4);color:#ff9800">provisional</span>';
+  h+='</div>';
   h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px">';
   GROUPS.forEach(function(grp){
     var myOrd=getGroupOrdered(grp.id,uid);
@@ -1622,12 +1648,13 @@ function renderResultadosTab(){
     h+='<div style="font-size:9px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;text-align:center;margin-bottom:4px">Mi predicción</div>';
     myOrd.forEach(function(team,i){
       var inReal=realTop2.indexOf(team.id)>=0;
+      var hitColor=groupsConfirmedFlag?'#00C853':'#ff9800';
       var posColors=['#FFD700','#C0C0C0','rgba(200,168,75,.5)','var(--text3)'];
-      h+='<div style="display:flex;align-items:center;gap:4px;padding:2px 4px;border-radius:3px;background:'+(i<2&&inReal?'rgba(0,200,83,.06)':'transparent')+'">';
+      h+='<div style="display:flex;align-items:center;gap:4px;padding:2px 4px;border-radius:3px;background:'+(i<2&&inReal?(groupsConfirmedFlag?'rgba(0,200,83,.06)':'rgba(255,152,0,.06)'):'transparent')+'">';
       h+='<span style="font-size:9px;color:'+posColors[i]+';min-width:14px;font-family:var(--fd)">'+(i+1)+'º</span>';
       h+='<span style="font-size:13px">'+team.f+'</span>';
-      h+='<span style="font-size:11px;flex:1;color:'+(i<2&&inReal?'#00C853':i<2?'var(--text2)':'var(--text3)')+'">'+team.n+'</span>';
-      if(i<2&&inReal) h+='<span style="font-size:9px;color:#00C853">+1</span>';
+      h+='<span style="font-size:11px;flex:1;color:'+(i<2&&inReal?hitColor:i<2?'var(--text2)':'var(--text3)')+'">'+team.n+'</span>';
+      if(i<2&&inReal) h+='<span style="font-size:9px;color:'+hitColor+'">+1'+(groupsConfirmedFlag?'':' *')+'</span>';
       h+='</div>';
     });
     h+='</div>';
@@ -1706,13 +1733,26 @@ function renderStandings(){
   var tbl=document.getElementById('standings-table');
   if(!sorted.length){tbl.innerHTML='<div class="no-data">No hay jugadores aún</div>';return;}
 
-  function roundCell(rd){
+  // Check if any provisional data exists, to show legend
+  var anyProvisional=sorted.some(function(item){
+    var bd=item.d.breakdown;
+    return (bd.groups&&bd.groups.provisional&&bd.groups.pts>0)
+      ||(bd.topScorer&&bd.topScorer.provisional&&bd.topScorer.pts>0)
+      ||(bd.espScorer&&bd.espScorer.provisional&&bd.espScorer.pts>0);
+  });
+
+  function roundCell(rd,isProvisional){
     if(!rd) return '<span style="color:var(--text3);font-size:11px">—</span>';
-    var color=rd.pts>0?'#00C853':'var(--text3)';
-    return '<span style="font-size:11px;color:var(--text2)">'+rd.hits+'/'+rd.max+'</span> <span style="color:'+color+';font-weight:700;font-size:12px">+'+rd.pts+'</span>';
+    var prov=isProvisional&&rd.pts>0;
+    var color=rd.pts>0?(prov?'#ff9800':'#00C853'):'var(--text3)';
+    return '<span style="font-size:11px;color:var(--text2)">'+rd.hits+'/'+rd.max+'</span> <span style="color:'+color+';font-weight:700;font-size:12px">+'+rd.pts+(prov?' *':'')+'</span>';
   }
 
-  var h='<div style="overflow-x:auto"><table class="res-table" style="min-width:1200px"><thead><tr>';
+  var h='';
+  if(anyProvisional){
+    h+='<div style="font-size:11px;color:#ff9800;margin-bottom:.75rem;padding:6px 10px;background:rgba(255,152,0,.08);border:1px solid rgba(255,152,0,.3);border-radius:var(--r)">* naranja = puntuación provisional, puede cambiar hasta que el admin confirme el resultado definitivo</div>';
+  }
+  h+='<div style="overflow-x:auto"><table class="res-table" style="min-width:1200px"><thead><tr>';
   h+='<th>#</th><th>Jugador</th>';
   h+='<th>⚽ Gol. Mundial</th><th>🇪🇸 Gol. España</th><th>🏅 MVP</th><th>🧤 Portero</th>';
   h+='<th style="text-align:center">Clasificados<br><span style="font-size:9px;color:var(--text3);font-weight:400">(grupos)</span></th>';
@@ -1732,13 +1772,15 @@ function renderStandings(){
 
     // Goleador mundial
     var ts=bd.topScorer||{};
+    var tsProv=ts.provisional&&ts.pts>0;
     h+='<td style="font-size:11px"><div style="color:'+(ts.pts>0?'var(--text)':'var(--text3)')+'">'+( ts.name||'—')+'</div>'
-      +(ts.name?'<div style="color:'+(ts.bonus?'#00C853':'var(--text3)')+'">'+ts.goals+' goles <b style="color:'+(ts.pts>0?'#00C853':'var(--text3)')+'">+'+ts.pts+'</b></div>':'')+'</td>';
+      +(ts.name?'<div style="color:'+(ts.bonus?(tsProv?'#ff9800':'#00C853'):'var(--text3)')+'">'+ts.goals+' goles <b style="color:'+(ts.pts>0?(tsProv?'#ff9800':'#00C853'):'var(--text3)')+'">+'+ts.pts+(tsProv?' *':'')+'</b></div>':'')+'</td>';
 
     // Goleador españa
     var es=bd.espScorer||{};
+    var esProv=es.provisional&&es.pts>0;
     h+='<td style="font-size:11px"><div style="color:'+(es.pts>0?'var(--text)':'var(--text3)')+'">'+( es.name||'—')+'</div>'
-      +(es.name?'<div style="color:'+(es.bonus?'#00C853':'var(--text3)')+'">'+es.goals+' goles <b style="color:'+(es.pts>0?'#00C853':'var(--text3)')+'">+'+es.pts+'</b></div>':'')+'</td>';
+      +(es.name?'<div style="color:'+(es.bonus?(esProv?'#ff9800':'#00C853'):'var(--text3)')+'">'+es.goals+' goles <b style="color:'+(es.pts>0?(esProv?'#ff9800':'#00C853'):'var(--text3)')+'">+'+es.pts+(esProv?' *':'')+'</b></div>':'')+'</td>';
 
     // MVP
     var mv=bd.mvp||{};
@@ -1752,7 +1794,7 @@ function renderStandings(){
 
     // Clasificados a 16avos (grupos+terceros)
     var grp=bd.groups||{hits:0,max:32,pts:0};
-    h+='<td style="text-align:center">'+roundCell(grp)+'</td>';
+    h+='<td style="text-align:center">'+roundCell(grp,grp.provisional)+'</td>';
 
     // Bracket rounds
     h+='<td style="text-align:center">'+roundCell(rounds.r16)+'</td>';
@@ -2242,20 +2284,23 @@ function populateSelect(id, options, value){
 
 function renderAdminTab(){
   renderPhaseControls();
-  renderPlayerGoals();
   renderGoalsTable();
+  renderPlayerGoals();
   // Populate add-scorer dropdown with full world players list
   var nsSel=document.getElementById('new-scorer-name');
-  if(nsSel&&nsSel.options.length<=1){
+  if(nsSel&&nsSel.options.length<=2){
+    var otroOption=nsSel.querySelector('option[value="__otro__"]');
     WORLD_PLAYERS.forEach(function(p){
       var o=document.createElement('option');
-      o.value=p;o.textContent=p;nsSel.appendChild(o);
+      o.value=p;o.textContent=p;
+      nsSel.insertBefore(o,otroOption);
     });
     // Also add Spanish players not already in world list
     ESP_PLAYERS.forEach(function(p){
       if(!WORLD_PLAYERS.includes(p)){
         var o=document.createElement('option');
-        o.value=p;o.textContent=p;nsSel.appendChild(o);
+        o.value=p;o.textContent=p;
+        nsSel.insertBefore(o,otroOption);
       }
     });
   }
@@ -2304,7 +2349,13 @@ function renderAdminResults(){
   var wrap=document.getElementById('admin-results-wrap');
   if(!wrap) return;
   if(adminRound==='groups'){
-    var h='<div style="font-size:12px;color:var(--text3);margin-bottom:1rem">Ordena los equipos de cada grupo con ▲▼ para introducir la clasificación real.</div>';
+    var isConfirmed=!!(S.results.groups&&S.results.groups.confirmed);
+    var h='<div style="display:flex;align-items:center;gap:10px;margin-bottom:1rem;padding:8px 12px;background:var(--dark2);border:1px solid var(--border2);border-radius:var(--r)">';
+    h+='<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;flex:1">';
+    h+='<input type="checkbox" id="confirm-groups" '+(isConfirmed?'checked':'')+' onchange="toggleGroupsConfirmed(this.checked)">';
+    h+='🏁 Fase de grupos terminada — clasificación de 16avos definitiva (no provisional)';
+    h+='</label></div>';
+    h+='<div style="font-size:12px;color:var(--text3);margin-bottom:1rem">Ordena los equipos de cada grupo con ▲▼ para introducir la clasificación real.</div>';
     h+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:1rem">';
     GROUPS.forEach(function(grp){
       var def=grp.teams.map(function(t){return t.id;});
@@ -2452,6 +2503,12 @@ function saveAdminState(msgId){
     .catch(function(){showSyncStatus(false);});
 }
 
+function toggleGroupsConfirmed(checked){
+  if(!S.results.groups) S.results.groups={};
+  S.results.groups.confirmed=checked;
+  saveAdminState(null);
+}
+
 function saveGroupResults(){
   if(!S.results.groups) S.results.groups={};
   var q32=[];
@@ -2588,74 +2645,99 @@ function findDuplicateSuggestions(){
 function mergeScorerNames(oldNames,newName){
   if(!S.scorers) S.scorers={};
   if(!S.scorers.goalsTable) S.scorers.goalsTable=[];
-  var oldNormSet={};
-  oldNames.forEach(function(n){if(n!==newName) oldNormSet[normalizeName(n)]=true;});
-  // Merge goalsTable entries: sum goals from duplicates into the canonical entry
-  var canonical=S.scorers.goalsTable.filter(function(e){return e.name===newName;})[0];
+  var newNorm=normalizeName(newName);
+  // Build set of ALL normalized variants being merged (including newName itself,
+  // so any entry matching any variant gets absorbed into the canonical one)
+  var allNormSet={};
+  oldNames.forEach(function(n){allNormSet[normalizeName(n)]=true;});
+  allNormSet[newNorm]=true;
+
+  // Find or create the canonical entry in goalsTable
+  var canonical=S.scorers.goalsTable.filter(function(e){return normalizeName(e.name)===newNorm;})[0];
+  var totalGoals=0;
+  var nat='world';
   var toRemove=[];
   S.scorers.goalsTable.forEach(function(e){
-    if(oldNormSet[normalizeName(e.name)]){
-      if(!canonical){
-        e.name=newName; // promote this one to canonical
-        canonical=e;
-      } else {
-        canonical.goals=(canonical.goals||0)+(e.goals||0);
-        toRemove.push(e);
-      }
+    if(allNormSet[normalizeName(e.name)]){
+      totalGoals+=(e.goals||0);
+      if(e.nat==='esp') nat='esp';
+      toRemove.push(e);
     }
   });
+  // Remove all matched entries, then re-add a single canonical one with summed goals
   S.scorers.goalsTable=S.scorers.goalsTable.filter(function(e){return toRemove.indexOf(e)===-1;});
-  // Update every quinela that used an old spelling
+  S.scorers.goalsTable.push({name:newName,goals:totalGoals,nat:nat});
+
+  // Update every quinela that used any old spelling (or the canonical spelling
+  // with different casing/accents) to the exact canonical name
   Object.keys(S.quinelas||{}).forEach(function(uid){
     var q=S.quinelas[uid];
-    if(q.topScorer&&oldNormSet[normalizeName(q.topScorer)]) q.topScorer=newName;
-    if(q.espScorer&&oldNormSet[normalizeName(q.espScorer)]) q.espScorer=newName;
+    if(q.topScorer&&allNormSet[normalizeName(q.topScorer)]) q.topScorer=newName;
+    if(q.espScorer&&allNormSet[normalizeName(q.espScorer)]) q.espScorer=newName;
   });
+
+  // Mark this group as resolved so it won't resurface
+  if(!window._dismissedDups) window._dismissedDups=[];
+  window._dismissedDups.push(oldNames.slice().sort().join('|'));
+
   syncPlayerGoalsFromTable();
   saveAdminState('scorers-msg');
-  renderGoalsTable();
-  renderDuplicateSuggestions();
+  renderGoalsTable(); // this also calls renderDuplicateSuggestions
+  renderPlayerGoals(); // refresh "jugadores elegidos en las porras" list
+  renderAdminAllQuinelas(); // refresh per-player breakdown table
 }
 
 function renderDuplicateSuggestions(){
   var wrap=document.getElementById('dup-suggestions-wrap');
   if(!wrap) return;
-  var suggestions=findDuplicateSuggestions();
+  var allSuggestions=findDuplicateSuggestions();
+  if(!window._dismissedDups) window._dismissedDups=[];
+  // Filter out groups the admin already merged or dismissed this session
+  var suggestions=allSuggestions.filter(function(s){
+    var key=s.variants.slice().sort().join('|');
+    return window._dismissedDups.indexOf(key)===-1;
+  });
   if(!suggestions.length){
     wrap.innerHTML='';
+    window._dupSuggestions={};
     return;
   }
   var h='<div style="background:rgba(225,150,0,.08);border:1px solid rgba(225,150,0,.35);border-radius:var(--r);padding:10px 14px;margin-bottom:1rem">';
   h+='<div style="font-size:12px;color:#ffb340;font-weight:700;margin-bottom:8px">⚠️ Posibles nombres duplicados detectados</div>';
-  suggestions.forEach(function(s,i){
+  window._dupSuggestions={}; // keyed by stable string key, not array index
+  suggestions.forEach(function(s){
+    var key=s.variants.slice().sort().join('|');
+    window._dupSuggestions[key]=s;
+    var safeKey=key.replace(/'/g,"\\'");
     var optionsHtml=s.variants.map(function(v){
       return '<option value="'+v.replace(/"/g,'&quot;')+'"'+(v===s.suggested?' selected':'')+'>'+v+'</option>';
     }).join('');
     h+='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0;border-top:1px solid rgba(225,150,0,.15)">';
     h+='<span style="font-size:12px;color:var(--text2)">'+s.variants.join('  /  ')+'</span>';
     h+='<span style="color:var(--text3);font-size:11px">→ fusionar como:</span>';
-    h+='<select id="dup-sel-'+i+'" style="padding:4px 8px;background:var(--dark3);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:12px">'+optionsHtml+'</select>';
-    h+='<button onclick="confirmMergeDup('+i+')" style="padding:4px 10px;background:rgba(225,150,0,.15);border:1px solid rgba(225,150,0,.4);border-radius:var(--r);color:#ffb340;cursor:pointer;font-size:11px;font-weight:600">✓ Fusionar</button>';
-    h+='<button onclick="dismissDup('+i+')" style="padding:4px 8px;background:transparent;border:1px solid var(--border);border-radius:var(--r);color:var(--text3);cursor:pointer;font-size:11px">Ignorar</button>';
+    h+='<select id="dup-sel-'+key.replace(/[^a-z0-9]/gi,'_')+'" data-key="'+safeKey+'" style="padding:4px 8px;background:var(--dark3);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:12px">'+optionsHtml+'</select>';
+    h+='<button data-key="'+safeKey+'" onclick="confirmMergeDup(this)" style="padding:4px 10px;background:rgba(225,150,0,.15);border:1px solid rgba(225,150,0,.4);border-radius:var(--r);color:#ffb340;cursor:pointer;font-size:11px;font-weight:600">✓ Fusionar</button>';
+    h+='<button data-key="'+safeKey+'" onclick="dismissDup(this)" style="padding:4px 8px;background:transparent;border:1px solid var(--border);border-radius:var(--r);color:var(--text3);cursor:pointer;font-size:11px">Ignorar</button>';
     h+='</div>';
   });
   h+='</div>';
   wrap.innerHTML=h;
-  window._dupSuggestions=suggestions;
 }
 
-function confirmMergeDup(i){
-  var s=window._dupSuggestions[i];
+function confirmMergeDup(btn){
+  var key=btn.getAttribute('data-key');
+  var s=window._dupSuggestions&&window._dupSuggestions[key];
   if(!s) return;
-  var sel=document.getElementById('dup-sel-'+i);
+  var selId='dup-sel-'+key.replace(/[^a-z0-9]/gi,'_');
+  var sel=document.getElementById(selId);
   var chosenName=sel?sel.value:s.suggested;
   mergeScorerNames(s.variants,chosenName);
 }
 
-function dismissDup(i){
+function dismissDup(btn){
+  var key=btn.getAttribute('data-key');
   if(!window._dismissedDups) window._dismissedDups=[];
-  var s=window._dupSuggestions[i];
-  if(s) window._dismissedDups.push(s.variants.slice().sort().join('|'));
+  if(key) window._dismissedDups.push(key);
   renderDuplicateSuggestions();
 }
 
@@ -2715,8 +2797,13 @@ function renderGoalsTable(){
   var espSorted=sorted.filter(function(e){return e.nat==='esp';});
   var espTop=espSorted[0]?espSorted[0].name:'';
   if(!S.scorers) S.scorers={};
-  S.scorers.world={name:worldTop};
-  S.scorers.spain={name:espTop};
+  S.scorers.world={name:worldTop,confirmed:(S.scorers.world&&S.scorers.world.confirmed)||false};
+  S.scorers.spain={name:espTop,confirmed:(S.scorers.spain&&S.scorers.spain.confirmed)||false};
+  // Populate confirmation checkboxes
+  var cwEl=document.getElementById('confirm-world-scorer');
+  var ceEl=document.getElementById('confirm-esp-scorer');
+  if(cwEl) cwEl.checked=S.scorers.world.confirmed;
+  if(ceEl) ceEl.checked=S.scorers.spain.confirmed;
   // Update selects if they exist
   var ws=document.getElementById('top-scorer-name');
   var es=document.getElementById('esp-scorer-name');
@@ -2736,9 +2823,28 @@ function renderGoalsTable(){
   wrap.innerHTML=h;
 }
 
+function handleNewScorerSelectChange(){
+  var sel=document.getElementById('new-scorer-name');
+  var customInput=document.getElementById('new-scorer-custom');
+  if(!sel||!customInput) return;
+  if(sel.value==='__otro__'){
+    customInput.style.display='block';
+    customInput.focus();
+  } else {
+    customInput.style.display='none';
+    customInput.value='';
+  }
+}
+
 function addGoalsEntry(){
   var sel=document.getElementById('new-scorer-name');
-  var name=sel?sel.value.trim():'';
+  var customInput=document.getElementById('new-scorer-custom');
+  var name='';
+  if(sel&&sel.value==='__otro__'){
+    name=customInput?customInput.value.trim():'';
+  } else {
+    name=sel?sel.value.trim():'';
+  }
   var nat=document.getElementById('new-scorer-nat').value;
   if(!name) return;
   if(!S.scorers) S.scorers={};
@@ -2750,6 +2856,7 @@ function addGoalsEntry(){
   saveAdminState('scorers-msg');
   renderGoalsTable();
   if(sel) sel.value='';
+  if(customInput){ customInput.value=''; customInput.style.display='none'; }
 }
 
 function updateGoalsEntry(name,delta){
@@ -2807,10 +2914,22 @@ function renderPlayerGoals(){
   }).join('');
 }
 
+function toggleScorerConfirmed(which,checked){
+  if(!S.scorers) S.scorers={};
+  if(which==='world'){
+    if(!S.scorers.world) S.scorers.world={};
+    S.scorers.world.confirmed=checked;
+  } else {
+    if(!S.scorers.spain) S.scorers.spain={};
+    S.scorers.spain.confirmed=checked;
+  }
+  saveAdminState(null);
+}
+
 function saveScorers(){
   if(!S.scorers) S.scorers={};
-  S.scorers.world={name:document.getElementById('top-scorer-name').value.trim()};
-  S.scorers.spain={name:document.getElementById('esp-scorer-name').value.trim()};
+  S.scorers.world={name:document.getElementById('top-scorer-name').value.trim(),confirmed:(S.scorers.world&&S.scorers.world.confirmed)||false};
+  S.scorers.spain={name:document.getElementById('esp-scorer-name').value.trim(),confirmed:(S.scorers.spain&&S.scorers.spain.confirmed)||false};
   S.scorers.mvp=document.getElementById('mvp-name').value.trim();
   S.scorers.goalkeeper=document.getElementById('gk-name').value.trim();
   syncPlayerGoalsFromTable();
