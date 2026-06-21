@@ -1302,18 +1302,25 @@ function calcScore(uid){
   var total=0;
   var bd={};
 
-  // Groups (16avos): 1pt per correct team
+  // Groups (16avos): 1pt per correct team — split into top1/top2 (24 max) and thirds (8 max)
   var r16actual=(res.groups&&res.groups.qualified)||[];
-  var pred=[];
+  var predTop2=[];
+  var predThirds=[];
   GROUPS.forEach(function(g){
     var o=getGroupOrdered(g.id,uid);
-    if(o[0]) pred.push(o[0].id);
-    if(o[1]) pred.push(o[1].id);
+    if(o[0]) predTop2.push(o[0].id);
+    if(o[1]) predTop2.push(o[1].id);
   });
-  getTop8Thirds(uid).forEach(function(t){pred.push(t.id);});
-  var r16hits=r16actual.length?pred.filter(function(t){return r16actual.indexOf(t)>=0;}).length:0;
+  getTop8Thirds(uid).forEach(function(t){predThirds.push(t.id);});
+  var top2Hits=r16actual.length?predTop2.filter(function(t){return r16actual.indexOf(t)>=0;}).length:0;
+  var thirdsHits=r16actual.length?predThirds.filter(function(t){return r16actual.indexOf(t)>=0;}).length:0;
+  var r16hits=top2Hits+thirdsHits;
   var groupsConfirmed=!!(res.groups&&res.groups.confirmed);
-  bd.groups={pts:r16hits,hits:r16hits,max:32,provisional:!groupsConfirmed};
+  bd.groups={
+    pts:r16hits,hits:r16hits,max:32,provisional:!groupsConfirmed,
+    top2:{hits:top2Hits,max:24,pts:top2Hits},
+    thirds:{hits:thirdsHits,max:8,pts:thirdsHits}
+  };
   total+=r16hits;
 
   // Bracket: 16avos=1, octavos=2, cuartos=4, semis=8, subcampeon=8, campeon=10
@@ -1750,9 +1757,10 @@ function renderStandings(){
   // Check if any provisional data exists, to show legend
   var anyProvisional=sorted.some(function(item){
     var bd=item.d.breakdown;
-    return (bd.groups&&bd.groups.provisional&&bd.groups.pts>0)
-      ||(bd.topScorer&&bd.topScorer.provisional&&bd.topScorer.pts>0)
-      ||(bd.espScorer&&bd.espScorer.provisional&&bd.espScorer.pts>0);
+    var grp=bd.groups||{};
+    return (grp.provisional&&grp.pts>0)
+      ||(bd.topScorer&&bd.topScorer.provisional&&bd.topScorer.bonus>0)
+      ||(bd.espScorer&&bd.espScorer.provisional&&bd.espScorer.bonus>0);
   });
 
   function roundCell(rd,isProvisional){
@@ -1769,8 +1777,9 @@ function renderStandings(){
   h+='<div style="overflow-x:auto"><table class="res-table" style="min-width:1200px"><thead><tr>';
   h+='<th>#</th><th>Jugador</th>';
   h+='<th>⚽ Gol. Mundial</th><th>🇪🇸 Gol. España</th><th>🏅 MVP</th><th>🧤 Portero</th>';
-  h+='<th style="text-align:center">Clasificados<br><span style="font-size:9px;color:var(--text3);font-weight:400">(grupos)</span></th>';
-  h+='<th style="text-align:center">16avos</th><th style="text-align:center">Octavos</th><th style="text-align:center">Cuartos</th><th style="text-align:center">Semis</th><th style="text-align:center">Sub/Camp.</th>';
+  h+='<th style="text-align:center">Clasificados<br><span style="font-size:9px;color:var(--text3);font-weight:400">a 16avos</span></th>';
+  h+='<th style="text-align:center">16avos<br><span style="font-size:9px;color:var(--text3);font-weight:400">(bracket)</span></th>';
+  h+='<th style="text-align:center">Octavos</th><th style="text-align:center">Cuartos</th><th style="text-align:center">Semis</th><th style="text-align:center">Sub/Camp.</th>';
   h+='<th style="text-align:right">Total</th>';
   h+='</tr></thead><tbody>';
 
@@ -1818,9 +1827,13 @@ function renderStandings(){
     h+='<td style="font-size:11px"><div style="color:'+(gk.pts>0?'#00C853':'var(--text2)')+'">'+( gk.name||'—')+'</div>'
       +(gk.name?'<b style="color:'+(gk.pts>0?'#00C853':'var(--text3)')+'">+'+gk.pts+'</b>':'')+'</td>';
 
-    // Clasificados a 16avos (grupos+terceros)
-    var grp=bd.groups||{hits:0,max:32,pts:0};
-    h+='<td style="text-align:center">'+roundCell(grp,grp.provisional)+'</td>';
+    // Clasificados a 16avos — desglosado: 1º/2º de grupo + mejores terceros
+    var grp=bd.groups||{provisional:true,top2:{hits:0,max:24,pts:0},thirds:{hits:0,max:8,pts:0}};
+    var grpProv=grp.provisional;
+    h+='<td style="text-align:center">'
+      +'<div style="margin-bottom:2px"><span style="font-size:9px;color:var(--text3)">1º/2º </span>'+roundCell(grp.top2,grpProv)+'</div>'
+      +'<div><span style="font-size:9px;color:var(--text3)">3ºs </span>'+roundCell(grp.thirds,grpProv)+'</div>'
+      +'</td>';
 
     // Bracket rounds
     h+='<td style="text-align:center">'+roundCell(rounds.r16)+'</td>';
