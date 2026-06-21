@@ -2241,6 +2241,21 @@ function handleArrow(btn){
   if(action==='moveTeam') moveTeam(uid,gid,tid,dir);
   else if(action==='moveGroupResult') moveGroupResult(gid,parseInt(tid),dir);
   else if(action==='moveAdminThird') moveAdminThird(tid,dir);
+  else if(action==='toggleAdminThird') toggleAdminThird(tid);
+}
+
+function toggleAdminThird(teamId){
+  if(!S.results.groups) S.results.groups={};
+  var sel=(S.results.groups.thirdsSelected||[]).slice();
+  var idx=sel.indexOf(teamId);
+  if(idx>=0){
+    sel.splice(idx,1);
+  } else {
+    if(sel.length>=8) return; // max reached
+    sel.push(teamId);
+  }
+  S.results.groups.thirdsSelected=sel;
+  renderAdminResults();
 }
 
 function toggleThirdSelection(uid,teamId){
@@ -2406,19 +2421,23 @@ function renderAdminResults(){
       h+='</div>';
     });
     h+='</div>';
-    // Show thirds auto-calculated, no ordering needed
+    // Thirds: admin selects which 8 of the 12 qualify (click to toggle, max 8)
     var allT2=GROUPS.map(function(g){
       var p=(S.results.groups&&S.results.groups[g.id])||g.teams.map(function(t){return t.id;});
       return teamById(p[2]);
     }).filter(Boolean);
+    var selectedThirdsAdmin=((S.results.groups&&S.results.groups.thirdsSelected)||[]);
     h+='<div style="margin-bottom:1rem">';
-    h+='<div style="font-family:var(--fd);font-size:15px;color:var(--gold);margin-bottom:.4rem">TERCEROS (automático)</div>';
-    h+='<div style="font-size:11px;color:var(--text3);margin-bottom:.5rem">Calculados automáticamente de la clasificación de grupos. Los 8 mejores clasifican a 16avos según Anexo C FIFA.</div>';
-    h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:5px">';
-    allT2.forEach(function(team,idx){
-      h+='<div style="display:flex;align-items:center;gap:6px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--r)">';
-      h+='<span style="font-size:10px;color:var(--text3);min-width:22px;font-family:var(--fd)">3º'+String.fromCharCode(65+idx)+'</span>';
-      h+='<span>'+team.f+'</span><span style="font-size:11px;font-weight:600">'+team.n+'</span>';
+    h+='<div style="font-family:var(--fd);font-size:15px;color:var(--gold);margin-bottom:.4rem">MEJORES TERCEROS — selecciona los 8 que pasan</div>';
+    h+='<div style="font-size:11px;color:var(--text3);margin-bottom:.5rem">Pincha para marcar los <b style="color:var(--text)">8</b> terceros reales que clasificaron a 16avos. Seleccionados: <b style="color:'+(selectedThirdsAdmin.length===8?'#00C853':'var(--gold)')+'">'+selectedThirdsAdmin.length+'/8</b></div>';
+    h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(165px,1fr));gap:5px">';
+    allT2.forEach(function(team){
+      var isSel=selectedThirdsAdmin.indexOf(team.id)>=0;
+      var canClick=isSel||selectedThirdsAdmin.length<8;
+      h+='<div data-action="toggleAdminThird" data-tid="'+team.id+'" onclick="handleArrow(this)" style="display:flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid '+(isSel?'rgba(0,200,83,.5)':'var(--border)')+';border-radius:var(--r);background:'+(isSel?'rgba(0,200,83,.08)':'transparent')+';cursor:'+(canClick?'pointer':'default')+';opacity:'+(canClick?'1':'.4')+'">';
+      h+='<span style="font-size:15px">'+team.f+'</span>';
+      h+='<span style="font-size:11px;font-weight:600;flex:1;color:'+(isSel?'#00C853':'var(--text2)')+'">'+team.n+'</span>';
+      h+='<span style="font-size:11px;width:18px;height:18px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:'+(isSel?'#00C853':'transparent')+';border:1px solid '+(isSel?'#00C853':'var(--border)')+';color:'+(isSel?'var(--black)':'var(--text3)')+'">'+(isSel?'✓':'')+'</span>';
       h+='</div>';
     });
     h+='</div></div>';
@@ -2549,12 +2568,9 @@ function saveGroupResults(){
     S.results.groups[g.id]=p; // ensure it's stored
     q32.push(p[0],p[1]);
   });
-  // Add qualifying thirds (best 8)
-  var adminThirds=(S.results.groups.thirds)||[];
-  adminThirds.slice(0,8).forEach(function(gid){
-    var p=S.results.groups[gid]||GROUPS.filter(function(g){return g.id===gid;})[0].teams.map(function(t){return t.id;});
-    if(p[2]) q32.push(p[2]);
-  });
+  // Add the 8 manually-selected qualifying thirds (team IDs, max 8)
+  var selectedThirds=(S.results.groups.thirdsSelected||[]).slice(0,8);
+  selectedThirds.forEach(function(tid){ q32.push(tid); });
   S.results.groups.qualified=q32;
   saveAdminState('results-msg');
 }
