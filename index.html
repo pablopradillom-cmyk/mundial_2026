@@ -320,6 +320,7 @@ body{background:var(--black);color:var(--text);font-family:var(--fb);}
           </select></div>
       </div>
       <div class="admin-label" style="margin-bottom:.5rem">Tabla de goleadores del Mundial — el primero de la lista es el máximo goleador</div>
+      <div id="dup-suggestions-wrap"></div>
       <div id="goals-table-wrap" style="margin-bottom:1rem"></div>
       <div style="display:flex;gap:8px;margin-bottom:1rem;align-items:center;flex-wrap:wrap">
         <div class="admin-label" style="margin:0;white-space:nowrap">Añadir jugador:</div>
@@ -1285,26 +1286,29 @@ function calcScore(uid){
   });
   getTop8Thirds(uid).forEach(function(t){pred.push(t.id);});
   var r16hits=r16actual.length?pred.filter(function(t){return r16actual.indexOf(t)>=0;}).length:0;
-  bd.groups={pts:r16hits};
+  bd.groups={pts:r16hits,hits:r16hits,max:32};
   total+=r16hits;
 
   // Bracket: 16avos=1, octavos=2, cuartos=4, semis=8, subcampeon=8, campeon=10
   var bp=q.bracket||{};
   var br=(res.bracket)||{};
+  var roundDefs=[
+    {key:'r16',label:'16avos',ids:['m73','m74','m75','m76','m77','m78','m79','m80','m81','m82','m83','m84','m85','m86','m87','m88'],pts:1,max:32},
+    {key:'r8', label:'Octavos',ids:['m89','m90','m91','m92','m93','m94','m95','m96'],pts:2,max:32},
+    {key:'qf', label:'Cuartos',ids:['m97','m98','m99','m100'],pts:4,max:32},
+    {key:'sf', label:'Semis',ids:['m101','m102'],pts:8,max:32}
+  ];
   var bTotal=0;
-  var roundPts={
-    m73:1,m74:1,m75:1,m76:1,m77:1,m78:1,m79:1,m80:1,
-    m81:1,m82:1,m83:1,m84:1,m85:1,m86:1,m87:1,m88:1,
-    m89:2,m90:2,m91:2,m92:2,m93:2,m94:2,m95:2,m96:2,
-    m97:4,m98:4,m99:4,m100:4,
-    m101:8,m102:8,
-    m103:10
-  };
-  Object.keys(br).forEach(function(mid){
-    var correct=br[mid];
-    if(!correct) return;
-    var pick=bp[mid];
-    if(pick&&pick===correct) bTotal+=(roundPts[mid]||0);
+  var roundResults={};
+  roundDefs.forEach(function(rd){
+    var hits=0;
+    rd.ids.forEach(function(mid){
+      var correct=br[mid];
+      if(!correct) return;
+      var pick=bp[mid];
+      if(pick&&pick===correct){ hits++; bTotal+=rd.pts; }
+    });
+    roundResults[rd.key]={label:rd.label,hits:hits,max:rd.ids.length,pts:hits*rd.pts};
   });
   // Subcampeón: +8 if user's predicted finalist (the one who lost the final) matches real finalist
   var realChampion=br['m103'];
@@ -1314,37 +1318,39 @@ function calcScore(uid){
   var userSF1winner=bp['m101'], userSF2winner=bp['m102'];
   var userSubcampeon=userChampion?(userChampion===userSF1winner?userSF2winner:userSF1winner):null;
   var subcampeonPts=(realSubcampeon&&userSubcampeon&&realSubcampeon===userSubcampeon)?8:0;
-  bTotal+=subcampeonPts;
-  bd.bracket={pts:bTotal,subcampeonPts:subcampeonPts};
+  var campeonPts=(realChampion&&userChampion&&realChampion===userChampion)?10:0;
+  bTotal+=subcampeonPts+campeonPts;
+  roundResults.final={label:'Final',subcampeonPts:subcampeonPts,campeonPts:campeonPts,pts:subcampeonPts+campeonPts};
+  bd.bracket={pts:bTotal,subcampeonPts:subcampeonPts,campeonPts:campeonPts,rounds:roundResults};
   total+=bTotal;
 
-  // Scorers
+  // Scorers — fixed bug: was reading pg[eg] instead of pg[ep]
   var sc=S.scorers||{};
   var wp=(q.topScorer||'').toLowerCase().trim();
   var ep=(q.espScorer||'').toLowerCase().trim();
   var pg=(sc.playerGoals)||{};
   var wg=wp?(pg[wp]||0):0;
-  var eg=ep?(pg[eg]||0):0;
+  var eg=ep?(pg[ep]||0):0;
   var wm=(sc.world&&sc.world.name||'').toLowerCase().trim();
   var em=(sc.spain&&sc.spain.name||'').toLowerCase().trim();
   var wb=(wm&&wp===wm)?10:0;
   var eb=(em&&ep===em)?10:0;
-  bd.topScorer={pts:wb+wg,bonus:wb,goals:wg};
-  bd.espScorer={pts:eb+eg,bonus:eb,goals:eg};
+  bd.topScorer={pts:wb+wg,bonus:wb,goals:wg,name:q.topScorer||''};
+  bd.espScorer={pts:eb+eg,bonus:eb,goals:eg,name:q.espScorer||''};
   total+=wb+wg+eb+eg;
 
   // MVP
-  var mvpPick=(q.mvp||'').toLowerCase().trim();
+  var mvpPickLow=(q.mvp||'').toLowerCase().trim();
   var mvpActual=(sc.mvp||'').toLowerCase().trim();
-  var mvpPts=(mvpActual&&mvpPick===mvpActual)?10:0;
-  bd.mvp={pts:mvpPts};
+  var mvpPts=(mvpActual&&mvpPickLow===mvpActual)?10:0;
+  bd.mvp={pts:mvpPts,name:q.mvp||''};
   total+=mvpPts;
 
   // Mejor portero
-  var gkPick=(q.goalkeeper||'').toLowerCase().trim();
+  var gkPickLow=(q.goalkeeper||'').toLowerCase().trim();
   var gkActual=(sc.goalkeeper||'').toLowerCase().trim();
-  var gkPts=(gkActual&&gkPick===gkActual)?10:0;
-  bd.goalkeeper={pts:gkPts};
+  var gkPts=(gkActual&&gkPickLow===gkActual)?10:0;
+  bd.goalkeeper={pts:gkPts,name:q.goalkeeper||''};
   total+=gkPts;
 
   return {total:Math.round(total*100)/100,breakdown:bd};
@@ -1379,7 +1385,10 @@ function doAuth(){
     if(!name){msg.innerHTML='<div class="msg-err">Escribe tu nombre</div>';return;}
     if(S.users[uid]){msg.innerHTML='<div class="msg-err">Ese usuario ya existe</div>';return;}
     S.users[uid]={name:name,pass:pass,isAdmin:false};
-    saveState();doLogin(uid);
+    localStorage.setItem('mundial2026',JSON.stringify(S));
+    supa.from('gamestate').upsert({id:'mundial2026',data:S,updated_at:new Date().toISOString()})
+      .then(function(){doLogin(uid);})
+      .catch(function(){doLogin(uid);});
   } else {
     var u=S.users[uid];
     if(!u||u.pass!==pass){msg.innerHTML='<div class="msg-err">Usuario o contraseña incorrectos</div>';return;}
@@ -1691,29 +1700,77 @@ var sfilt='all';
 function renderStandings(){
   var sc=getAllScores();
   document.getElementById('standings-pills').innerHTML=
-    '<button class="round-pill '+(sfilt==='all'?'active':'')+'" onclick="setSF(\'all\')">General</button>'+
-    '<button class="round-pill '+(sfilt==='groups'?'active':'')+'" onclick="setSF(\'groups\')">16avos</button>'+
-    '<button class="round-pill '+(sfilt==='bracket'?'active':'')+'" onclick="setSF(\'bracket\')">Bracket</button>'+
-    '<button class="round-pill '+(sfilt==='topScorer'?'active':'')+'" onclick="setSF(\'topScorer\')">Gol. Mundial</button>'+
-    '<button class="round-pill '+(sfilt==='espScorer'?'active':'')+'" onclick="setSF(\'espScorer\')">Gol. España</button>'+
-    '<button class="round-pill '+(sfilt==='mvp'?'active':'')+'" onclick="setSF(\'mvp\')">MVP</button>'+
-    '<button class="round-pill '+(sfilt==='goalkeeper'?'active':'')+'" onclick="setSF(\'goalkeeper\')">Portero</button>';
+    '<button class="round-pill '+(sfilt==='all'?'active':'')+'" onclick="setSF(\'all\')">General</button>';
   var sorted=Object.keys(sc).map(function(uid){return {uid:uid,d:sc[uid]};});
-  sorted.sort(function(a,b){
-    if(sfilt==='all') return b.d.total-a.d.total;
-    return (b.d.breakdown[sfilt]?b.d.breakdown[sfilt].pts:0)-(a.d.breakdown[sfilt]?a.d.breakdown[sfilt].pts:0);
-  });
+  sorted.sort(function(a,b){return b.d.total-a.d.total;});
   var tbl=document.getElementById('standings-table');
   if(!sorted.length){tbl.innerHTML='<div class="no-data">No hay jugadores aún</div>';return;}
-  var h='<div class="stn-head"><div>#</div><div>Jugador</div><div style="text-align:right">Grupos</div><div style="text-align:right">Bracket</div><div style="text-align:right">Goleadores</div><div style="text-align:right">Total</div></div>';
+
+  function roundCell(rd){
+    if(!rd) return '<span style="color:var(--text3);font-size:11px">—</span>';
+    var color=rd.pts>0?'#00C853':'var(--text3)';
+    return '<span style="font-size:11px;color:var(--text2)">'+rd.hits+'/'+rd.max+'</span> <span style="color:'+color+';font-weight:700;font-size:12px">+'+rd.pts+'</span>';
+  }
+
+  var h='<div style="overflow-x:auto"><table class="res-table" style="min-width:1200px"><thead><tr>';
+  h+='<th>#</th><th>Jugador</th>';
+  h+='<th>⚽ Gol. Mundial</th><th>🇪🇸 Gol. España</th><th>🏅 MVP</th><th>🧤 Portero</th>';
+  h+='<th style="text-align:center">Clasificados<br><span style="font-size:9px;color:var(--text3);font-weight:400">(grupos)</span></th>';
+  h+='<th style="text-align:center">16avos</th><th style="text-align:center">Octavos</th><th style="text-align:center">Cuartos</th><th style="text-align:center">Semis</th><th style="text-align:center">Sub/Camp.</th>';
+  h+='<th style="text-align:right">Total</th>';
+  h+='</tr></thead><tbody>';
+
   sorted.forEach(function(item,i){
     var d=item.d;
-    var pc=i===0?'pos-1':i===1?'pos-2':i===2?'pos-3':'pos-other';
-    var gPts=d.breakdown.groups?d.breakdown.groups.pts:0;
-    var bPts=d.breakdown.bracket?d.breakdown.bracket.pts:0;
-    var sPts=(d.breakdown.topScorer?d.breakdown.topScorer.pts:0)+(d.breakdown.espScorer?d.breakdown.espScorer.pts:0)+(d.breakdown.mvp?d.breakdown.mvp.pts:0)+(d.breakdown.goalkeeper?d.breakdown.goalkeeper.pts:0);
-    h+='<div class="stn-row"><div class="pos-num '+pc+'">'+(i+1)+'</div><div style="font-weight:600;font-size:14px">'+d.name+'</div><div class="pts-cell">'+gPts+'</div><div class="pts-cell">'+bPts+'</div><div class="pts-cell">'+sPts+'</div><div class="pts-total">'+d.total+'</div></div>';
+    var bd=d.breakdown;
+    var rounds=(bd.bracket&&bd.bracket.rounds)||{};
+    var posColor=i===0?'var(--gold)':i===1?'#C0C0C0':i===2?'rgba(200,168,75,.6)':'var(--text3)';
+
+    h+='<tr style="'+(i===0?'background:rgba(200,168,75,.05)':'')+'">';
+    h+='<td style="font-family:var(--fd);font-size:16px;color:'+posColor+'">'+(i+1)+'</td>';
+    h+='<td style="font-weight:700">'+d.name+'</td>';
+
+    // Goleador mundial
+    var ts=bd.topScorer||{};
+    h+='<td style="font-size:11px"><div style="color:'+(ts.pts>0?'var(--text)':'var(--text3)')+'">'+( ts.name||'—')+'</div>'
+      +(ts.name?'<div style="color:'+(ts.bonus?'#00C853':'var(--text3)')+'">'+ts.goals+' goles <b style="color:'+(ts.pts>0?'#00C853':'var(--text3)')+'">+'+ts.pts+'</b></div>':'')+'</td>';
+
+    // Goleador españa
+    var es=bd.espScorer||{};
+    h+='<td style="font-size:11px"><div style="color:'+(es.pts>0?'var(--text)':'var(--text3)')+'">'+( es.name||'—')+'</div>'
+      +(es.name?'<div style="color:'+(es.bonus?'#00C853':'var(--text3)')+'">'+es.goals+' goles <b style="color:'+(es.pts>0?'#00C853':'var(--text3)')+'">+'+es.pts+'</b></div>':'')+'</td>';
+
+    // MVP
+    var mv=bd.mvp||{};
+    h+='<td style="font-size:11px"><div style="color:'+(mv.pts>0?'#00C853':'var(--text2)')+'">'+( mv.name||'—')+'</div>'
+      +(mv.name?'<b style="color:'+(mv.pts>0?'#00C853':'var(--text3)')+'">+'+mv.pts+'</b>':'')+'</td>';
+
+    // Portero
+    var gk=bd.goalkeeper||{};
+    h+='<td style="font-size:11px"><div style="color:'+(gk.pts>0?'#00C853':'var(--text2)')+'">'+( gk.name||'—')+'</div>'
+      +(gk.name?'<b style="color:'+(gk.pts>0?'#00C853':'var(--text3)')+'">+'+gk.pts+'</b>':'')+'</td>';
+
+    // Clasificados a 16avos (grupos+terceros)
+    var grp=bd.groups||{hits:0,max:32,pts:0};
+    h+='<td style="text-align:center">'+roundCell(grp)+'</td>';
+
+    // Bracket rounds
+    h+='<td style="text-align:center">'+roundCell(rounds.r16)+'</td>';
+    h+='<td style="text-align:center">'+roundCell(rounds.r8)+'</td>';
+    h+='<td style="text-align:center">'+roundCell(rounds.qf)+'</td>';
+    h+='<td style="text-align:center">'+roundCell(rounds.sf)+'</td>';
+
+    // Sub/Campeon
+    var fin=rounds.final||{subcampeonPts:0,campeonPts:0};
+    h+='<td style="text-align:center;font-size:11px">'
+      +'<span style="color:'+(fin.subcampeonPts?'#00C853':'var(--text3)')+'">🥈+'+fin.subcampeonPts+'</span> '
+      +'<span style="color:'+(fin.campeonPts?'#00C853':'var(--text3)')+'">🥇+'+fin.campeonPts+'</span>'
+      +'</td>';
+
+    h+='<td style="text-align:right;font-family:var(--fd);font-size:22px;color:var(--gold)">'+d.total+'</td>';
+    h+='</tr>';
   });
+  h+='</tbody></table></div>';
   tbl.innerHTML=h;
 }
 
@@ -2363,12 +2420,30 @@ function renderAdminResults(){
 }
 
 // Admin saves go directly to Supabase (full upsert) — not through merge_quinela
-// This ensures settings, results and scorers are always persisted correctly
+// This ensures settings, results and scorers are always persisted correctly.
+// Reads server first to avoid stomping quinelas saved by players in the last few seconds.
 function saveAdminState(msgId){
   localStorage.setItem('mundial2026',JSON.stringify(S));
-  supa.from('gamestate').upsert({id:'mundial2026',data:S,updated_at:new Date().toISOString()})
+  supa.from('gamestate').select('data').eq('id','mundial2026').single()
+    .then(function(r){
+      if(!r.error&&r.data&&r.data.data){
+        var serverQuinelas=r.data.data.quinelas||{};
+        // Merge in any server quinelas that S doesn't have or that are newer
+        // (S wins for users currently being edited by admin, server wins for the rest)
+        var editingUid=null;
+        var sel=document.getElementById('quinela-view-user');
+        if(sel&&sel.value) editingUid=sel.value;
+        Object.keys(serverQuinelas).forEach(function(uid){
+          if(uid===editingUid) return; // admin's in-progress edit wins
+          if(uid===currentUser) return; // own edits win
+          S.quinelas[uid]=serverQuinelas[uid]; // take server's latest for everyone else
+        });
+      }
+      return supa.from('gamestate').upsert({id:'mundial2026',data:S,updated_at:new Date().toISOString()});
+    })
     .then(function(r){
       showSyncStatus(!r.error);
+      localStorage.setItem('mundial2026',JSON.stringify(S));
       if(msgId){
         var m=document.getElementById(msgId);
         if(m){m.innerHTML='<span style="color:'+(r.error?'#E10600':'#00C853')+'">'+(r.error?'✗ Error':'✓ Guardado')+'</span>';setTimeout(function(){if(m)m.innerHTML='';},2000);}
@@ -2428,6 +2503,161 @@ function saveBracketResults(){
   saveAdminState('results-msg2');
 }
 
+
+// ── DUPLICATE NAME DETECTION ────────────────────────────────
+// Normalize a name for comparison: lowercase, strip accents, strip extra spaces
+function normalizeName(s){
+  return (s||'').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'') // strip accents
+    .replace(/[^a-z0-9\s]/g,'') // strip punctuation
+    .trim().replace(/\s+/g,' ');
+}
+
+// Returns true if two names likely refer to the same player
+// (one is a substring of the other, e.g. "mbappe" vs "kylian mbappe")
+function namesLikelyMatch(a,b){
+  var na=normalizeName(a), nb=normalizeName(b);
+  if(!na||!nb||na===nb) return na===nb&&na!=='';
+  var shorter=na.length<=nb.length?na:nb;
+  var longer=na.length<=nb.length?nb:na;
+  // Match if the shorter name's last word (surname) appears in the longer name
+  var shorterWords=shorter.split(' ');
+  var lastWord=shorterWords[shorterWords.length-1];
+  if(lastWord.length>=4 && longer.indexOf(lastWord)>=0) return true;
+  // Or if longer contains shorter as substring entirely
+  if(shorter.length>=4 && longer.indexOf(shorter)>=0) return true;
+  return false;
+}
+
+// Collect every distinct name string used anywhere: goalsTable entries + all quinela picks
+function getAllScorerNameSources(){
+  var names={}; // normalized -> {variants:Set, sources:[{type,uid,field,original}]}
+  function add(original,type,uid,field){
+    if(!original) return;
+    var norm=normalizeName(original);
+    if(!norm) return;
+    if(!names[norm]) names[norm]={variants:{},count:0};
+    names[norm].variants[original]=true;
+    names[norm].count++;
+  }
+  (S.scorers&&S.scorers.goalsTable||[]).forEach(function(e){add(e.name,'table');});
+  Object.keys(S.quinelas||{}).forEach(function(uid){
+    var q=S.quinelas[uid];
+    add(q.topScorer,'quinela',uid,'topScorer');
+    add(q.espScorer,'quinela',uid,'espScorer');
+  });
+  return names;
+}
+
+// Find groups of names that are likely duplicates of each other but spelled differently
+function findDuplicateSuggestions(){
+  var sources=getAllScorerNameSources();
+  var normKeys=Object.keys(sources);
+  var suggestions=[]; // [{group:[name1,name2,...], suggested:bestName}]
+  var used={};
+  normKeys.forEach(function(k1,i){
+    if(used[k1]) return;
+    var group=[k1];
+    normKeys.forEach(function(k2,j){
+      if(i===j||used[k2]) return;
+      // Get a representative original spelling for comparison
+      var v1=Object.keys(sources[k1].variants)[0];
+      var v2=Object.keys(sources[k2].variants)[0];
+      if(namesLikelyMatch(v1,v2)){
+        group.push(k2);
+      }
+    });
+    if(group.length>1){
+      group.forEach(function(k){used[k]=true;});
+      // Collect all original variants across the group
+      var allVariants=[];
+      group.forEach(function(k){
+        Object.keys(sources[k].variants).forEach(function(v){allVariants.push(v);});
+      });
+      // Suggest the longest name as canonical (usually most complete, e.g. "Kylian Mbappé")
+      var suggested=allVariants.slice().sort(function(a,b){return b.length-a.length;})[0];
+      suggestions.push({variants:allVariants,suggested:suggested});
+    } else {
+      used[k1]=true;
+    }
+  });
+  return suggestions;
+}
+
+// Merge all occurrences of oldNames into newName across goalsTable and all quinelas
+function mergeScorerNames(oldNames,newName){
+  if(!S.scorers) S.scorers={};
+  if(!S.scorers.goalsTable) S.scorers.goalsTable=[];
+  var oldNormSet={};
+  oldNames.forEach(function(n){if(n!==newName) oldNormSet[normalizeName(n)]=true;});
+  // Merge goalsTable entries: sum goals from duplicates into the canonical entry
+  var canonical=S.scorers.goalsTable.filter(function(e){return e.name===newName;})[0];
+  var toRemove=[];
+  S.scorers.goalsTable.forEach(function(e){
+    if(oldNormSet[normalizeName(e.name)]){
+      if(!canonical){
+        e.name=newName; // promote this one to canonical
+        canonical=e;
+      } else {
+        canonical.goals=(canonical.goals||0)+(e.goals||0);
+        toRemove.push(e);
+      }
+    }
+  });
+  S.scorers.goalsTable=S.scorers.goalsTable.filter(function(e){return toRemove.indexOf(e)===-1;});
+  // Update every quinela that used an old spelling
+  Object.keys(S.quinelas||{}).forEach(function(uid){
+    var q=S.quinelas[uid];
+    if(q.topScorer&&oldNormSet[normalizeName(q.topScorer)]) q.topScorer=newName;
+    if(q.espScorer&&oldNormSet[normalizeName(q.espScorer)]) q.espScorer=newName;
+  });
+  syncPlayerGoalsFromTable();
+  saveAdminState('scorers-msg');
+  renderGoalsTable();
+  renderDuplicateSuggestions();
+}
+
+function renderDuplicateSuggestions(){
+  var wrap=document.getElementById('dup-suggestions-wrap');
+  if(!wrap) return;
+  var suggestions=findDuplicateSuggestions();
+  if(!suggestions.length){
+    wrap.innerHTML='';
+    return;
+  }
+  var h='<div style="background:rgba(225,150,0,.08);border:1px solid rgba(225,150,0,.35);border-radius:var(--r);padding:10px 14px;margin-bottom:1rem">';
+  h+='<div style="font-size:12px;color:#ffb340;font-weight:700;margin-bottom:8px">⚠️ Posibles nombres duplicados detectados</div>';
+  suggestions.forEach(function(s,i){
+    var optionsHtml=s.variants.map(function(v){
+      return '<option value="'+v.replace(/"/g,'&quot;')+'"'+(v===s.suggested?' selected':'')+'>'+v+'</option>';
+    }).join('');
+    h+='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0;border-top:1px solid rgba(225,150,0,.15)">';
+    h+='<span style="font-size:12px;color:var(--text2)">'+s.variants.join('  /  ')+'</span>';
+    h+='<span style="color:var(--text3);font-size:11px">→ fusionar como:</span>';
+    h+='<select id="dup-sel-'+i+'" style="padding:4px 8px;background:var(--dark3);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:12px">'+optionsHtml+'</select>';
+    h+='<button onclick="confirmMergeDup('+i+')" style="padding:4px 10px;background:rgba(225,150,0,.15);border:1px solid rgba(225,150,0,.4);border-radius:var(--r);color:#ffb340;cursor:pointer;font-size:11px;font-weight:600">✓ Fusionar</button>';
+    h+='<button onclick="dismissDup('+i+')" style="padding:4px 8px;background:transparent;border:1px solid var(--border);border-radius:var(--r);color:var(--text3);cursor:pointer;font-size:11px">Ignorar</button>';
+    h+='</div>';
+  });
+  h+='</div>';
+  wrap.innerHTML=h;
+  window._dupSuggestions=suggestions;
+}
+
+function confirmMergeDup(i){
+  var s=window._dupSuggestions[i];
+  if(!s) return;
+  var sel=document.getElementById('dup-sel-'+i);
+  var chosenName=sel?sel.value:s.suggested;
+  mergeScorerNames(s.variants,chosenName);
+}
+
+function dismissDup(i){
+  if(!window._dismissedDups) window._dismissedDups=[];
+  var s=window._dupSuggestions[i];
+  if(s) window._dismissedDups.push(s.variants.slice().sort().join('|'));
+  renderDuplicateSuggestions();
+}
 
 function renderGoalsTable(){
   var wrap=document.getElementById('goals-table-wrap');
@@ -2501,6 +2731,7 @@ function renderGoalsTable(){
   }
   // Also update player goals for scoring
   syncPlayerGoalsFromTable();
+  renderDuplicateSuggestions();
 
   wrap.innerHTML=h;
 }
@@ -2655,7 +2886,7 @@ function createUser(){
   if(!uid||!name||!pass){msg.innerHTML='<span style="color:#ff6b6b">Rellena todo</span>';return;}
   if(S.users[uid]){msg.innerHTML='<span style="color:#ff6b6b">Ya existe</span>';return;}
   S.users[uid]={name:name,pass:pass,isAdmin:false};
-  saveState();renderUserList();
+  saveAdminState(null);renderUserList();
   document.getElementById('new-uid').value='';
   document.getElementById('new-name').value='';
   document.getElementById('new-pass').value='';
