@@ -2456,15 +2456,28 @@ function renderAdminResults(){
   } else {
     // Bracket — use same visual as renderBracket but with admin resolver, plus click to set winner
     var br2=S.results.bracket||{};
+    // Build a helper: team ID → which group it's 3rd in (for admin results)
+    function getThirdGroupOf(teamId){
+      for(var gi=0;gi<GROUPS.length;gi++){
+        var g=GROUPS[gi];
+        var p=(S.results.groups&&S.results.groups[g.id])||g.teams.map(function(t){return t.id;});
+        if(p[2]===teamId) return g.id;
+      }
+      return null;
+    }
+
+    // Get the 8 selected thirds as group letters (for Annex C lookup)
+    var selectedThirdsTeamIds=(S.results.groups&&S.results.groups.thirdsSelected)||[];
+    var top8GroupLetters=selectedThirdsTeamIds.map(function(tid){return getThirdGroupOf(tid);}).filter(Boolean);
+    var admAssignment=top8GroupLetters.length===8?getThirdSlotAssignment(top8GroupLetters):{};
+
     function resolveAdm(slot){
       if(!slot) return null;
       if(slot.indexOf('W:')===0) return br2[slot.slice(2)]||null;
       if(slot.indexOf('3rdM:')===0){
         var mid2=slot.slice(5);
-        var thirds2=(S.results.groups&&S.results.groups.thirds)||[];
-        var assignment2=getThirdSlotAssignment(thirds2);
-        var grpId2=assignment2[mid2];
-        if(!grpId2) return null;
+        var grpId2=admAssignment[mid2];
+        if(!grpId2) return '__pending__'+mid2; // signal that this slot needs selection
         var p3=(S.results.groups&&S.results.groups[grpId2])||GROUPS.filter(function(g){return g.id===grpId2;})[0].teams.map(function(t){return t.id;});
         return p3[2]||null;
       }
@@ -2476,23 +2489,42 @@ function renderAdminResults(){
 
     function renderAdmMatch(m,size){
       var aId=resolveAdm(m.a), bId=resolveAdm(m.b);
+      var aIsPending=aId&&typeof aId==='string'&&aId.indexOf('__pending__')===0;
+      var bIsPending=bId&&typeof bId==='string'&&bId.indexOf('__pending__')===0;
+      if(aIsPending) aId=null;
+      if(bIsPending) bId=null;
       var at=aId?teamById(aId):null, bt=bId?teamById(bId):null;
       var winner=br2[m.id];
       var aw=winner&&winner===aId, bw=winner&&winner===bId;
       var p=size==='sm'?'3px 5px':'5px 7px', fs=size==='sm'?'10px':'11px';
       var mw=size==='sm'?'105px':'125px';
-      function row(team,id,isW){
+
+      function makeDropdown(){
+        var opts='<option value="">— Elige 3º —</option>';
+        selectedThirdsTeamIds.forEach(function(tid){
+          var t=teamById(tid);
+          opts+='<option value="'+tid+'">'+t.f+' '+t.n+'</option>';
+        });
+        return '<div class="bt tbd" style="padding:2px 3px;font-size:'+fs+'">'
+          +'<select onchange="setBracketResultThird(\''+m.id+'\',this.value)" '
+          +'style="width:100%;background:var(--dark2);border:1px solid var(--gold);border-radius:3px;color:var(--text);font-size:10px;padding:2px">'
+          +opts+'</select></div>';
+      }
+
+      function row(team,id,isW,isPending){
+        if(isPending) return makeDropdown();
         var canClick=!!(team&&id);
-        var onclickStr=canClick?' onclick="setBracketResult(\''+m.id+'\''+',\''+id+'\')"':'';
+        var onclickStr=canClick?' onclick="setBracketResult(\''+m.id+'\',\''+id+'\')"':'';
         return '<div class="bt'+(isW?' winner':'')+((!team)?' tbd':'')
           +'" style="padding:'+p+';font-size:'+fs+';cursor:'+(canClick?'pointer':'default')+'"'
           +onclickStr+'>'+
           (team?('<span style="font-size:'+(size==='sm'?'12px':'14px')+';line-height:1">'+team.f+'</span><span style="margin-left:3px">'+team.n+'</span>'+(isW?'<span style="margin-left:auto;font-size:9px">✓</span>':'')):'<span>Por definir</span>')+
           '</div>';
-          (team?('<span style="font-size:'+(size==='sm'?'12px':'14px')+';line-height:1">'+team.f+'</span><span style="margin-left:3px">'+team.n+'</span>'+(isW?'<span style="margin-left:auto;font-size:9px">✓</span>':'')):'<span>Por definir</span>')+
-          '</div>';
       }
-      return '<div class="bm'+(winner?' picked':'')+'" style="min-width:'+mw+'">'+row(at,aId,aw)+row(bt,bId,bw)+'</div>';
+
+      var border=(aIsPending||bIsPending)?'border-color:rgba(200,168,75,.5);':'';
+      return '<div class="bm'+(winner?' picked':'')+'" style="min-width:'+mw+';'+border+'">'
+        +row(at,aId,aw,aIsPending)+row(bt,bId,bw,bIsPending)+'</div>';
     }
 
     function admCol(matches,label,size){
@@ -2583,6 +2615,15 @@ function saveGroupResults(){
   selectedThirds.forEach(function(tid){ q32.push(tid); });
   S.results.groups.qualified=q32;
   saveAdminState('results-msg');
+}
+
+function setBracketResultThird(mid,tid){
+  // Admin manually assigns a third-place team to a bracket slot
+  if(!S.results.bracket) S.results.bracket={};
+  if(!tid) return;
+  S.results.bracket[mid]=tid;
+  saveAdminState(null);
+  renderAdminResults();
 }
 
 function setBracketResult(mid,tid){
