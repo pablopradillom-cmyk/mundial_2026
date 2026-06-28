@@ -1493,6 +1493,44 @@ function renderResultadosTab(){
   var br_real=(res.bracket)||{};
   var h='';
 
+  // ── ESTADO DE ACTUALIZACIÓN ──────────────────────────────
+  var groupsDone=!!(res.groups&&res.groups.confirmed);
+  var qualified=r16actual.length>0;
+  var bracketMatches=Object.keys(br_real);
+  var r32done=bracketMatches.filter(function(m){return ['m73','m74','m75','m76','m77','m78','m79','m80','m81','m82','m83','m84','m85','m86','m87','m88'].indexOf(m)>=0;}).length;
+  var r16done=bracketMatches.filter(function(m){return ['m89','m90','m91','m92','m93','m94','m95','m96'].indexOf(m)>=0;}).length;
+  var qfdone=bracketMatches.filter(function(m){return ['m97','m98','m99','m100'].indexOf(m)>=0;}).length;
+  var sfdone=bracketMatches.filter(function(m){return ['m101','m102'].indexOf(m)>=0;}).length;
+  var finalDone=!!br_real['m103'];
+
+  var groupsIntroduced=GROUPS.filter(function(g){return res.groups&&res.groups[g.id]&&res.groups[g.id].length===4;}).length;
+  function statusBadge(label,done,total,extra){
+    var bg=done===total&&total>0?'rgba(0,200,83,.1)':done>0?'rgba(200,168,75,.1)':'var(--dark2)';
+    var bc=done===total&&total>0?'rgba(0,200,83,.4)':done>0?'rgba(200,168,75,.4)':'var(--border)';
+    var tc=done===total&&total>0?'#00C853':done>0?'var(--gold)':'var(--text3)';
+    var icon=done===total&&total>0?'✅':done>0?'⏳':'🔲';
+    return '<div style="display:flex;align-items:center;gap:6px;padding:6px 10px;background:'+bg+';border:1px solid '+bc+';border-radius:var(--r);flex:1;min-width:150px">'
+      +'<span style="font-size:14px">'+icon+'</span>'
+      +'<div><div style="font-size:11px;font-weight:600;color:'+tc+'">'+label+'</div>'
+      +'<div style="font-size:10px;color:var(--text3)">'+(extra||done+'/'+total)+'</div>'
+      +'</div></div>';
+  }
+
+  h+='<div style="background:var(--dark);border:1px solid var(--border2);border-radius:10px;padding:12px 14px;margin-bottom:1rem">';
+  h+='<div style="font-size:11px;font-weight:700;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">📋 Resultados introducidos hasta ahora</div>';
+  h+='<div style="display:flex;flex-wrap:wrap;gap:6px">';
+  h+=statusBadge('Fase de grupos', groupsDone?12:groupsIntroduced, 12, groupsDone?'Completada ✓':(groupsIntroduced>0?groupsIntroduced+'/12 grupos':'Pendiente'));
+  h+=statusBadge('16avos de final', r32done, 16);
+  h+=statusBadge('Octavos de final', r16done, 8);
+  h+=statusBadge('Cuartos de final', qfdone, 4);
+  h+=statusBadge('Semifinales', sfdone, 2);
+  h+=statusBadge('Final', finalDone?1:0, 1, finalDone?teamById(br_real['m103']).n+' 🏆':'Pendiente');
+  h+='</div>';
+  if(!groupsDone&&groupsIntroduced===0&&r32done===0){
+    h+='<div style="font-size:11px;color:var(--text3);margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">⏳ Pendiente de que el admin introduzca los resultados</div>';
+  }
+  h+='</div>';
+
   // ── PREMIOS INDIVIDUALES ──────────────────────────────────
   h+='<div class="card" style="border-color:rgba(200,168,75,.25);margin-bottom:1rem">';
   h+='<div style="font-family:var(--fd);font-size:18px;letter-spacing:1.5px;color:var(--gold);margin-bottom:1rem">★ PREMIOS INDIVIDUALES</div>';
