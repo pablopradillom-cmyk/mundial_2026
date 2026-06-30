@@ -1319,24 +1319,35 @@ function calcScore(uid){
 
   // Bracket rounds — points exactly as published in Normas:
   // Octavos (16 eq.) +2pts c/u =32, Cuartos (8 eq.) +4pts c/u=32, Semis (4 eq.) +8pts c/u=32
+  // Scoring is by TEAM, not by exact match slot: if your predicted team is alive
+  // in that round in reality, you get the point — regardless of which side of the
+  // bracket it ended up on.
   var bp=q.bracket||{};
   var br=(res.bracket)||{};
   var roundDefs=[
-    {key:'r8', label:'Octavos',ids:['m73','m74','m75','m76','m77','m78','m79','m80','m81','m82','m83','m84','m85','m86','m87','m88'],pts:2,max:16},
-    {key:'qf', label:'Cuartos',ids:['m89','m90','m91','m92','m93','m94','m95','m96'],pts:4,max:8},
-    {key:'sf', label:'Semis',ids:['m97','m98','m99','m100'],pts:8,max:4}
+    {key:'r8', label:'Octavos',matchIds:['m73','m74','m75','m76','m77','m78','m79','m80','m81','m82','m83','m84','m85','m86','m87','m88'],pts:2,max:16},
+    {key:'qf', label:'Cuartos',matchIds:['m89','m90','m91','m92','m93','m94','m95','m96'],pts:4,max:8},
+    {key:'sf', label:'Semis',matchIds:['m97','m98','m99','m100'],pts:8,max:4}
   ];
   var bTotal=0;
   var roundResults={};
   roundDefs.forEach(function(rd){
+    // Real teams that reached this round = the winners of these matches
+    var realTeamsInRound=rd.matchIds.map(function(mid){return br[mid];}).filter(Boolean);
+    // Predicted teams the user thinks reach this round = their picks for these matches
+    var predTeamsInRound=rd.matchIds.map(function(mid){return bp[mid];}).filter(Boolean);
     var hits=0;
-    rd.ids.forEach(function(mid){
-      var correct=br[mid];
-      if(!correct) return;
-      var pick=bp[mid];
-      if(pick&&pick===correct){ hits++; bTotal+=rd.pts; }
-    });
-    roundResults[rd.key]={label:rd.label,hits:hits,max:rd.ids.length,pts:hits*rd.pts};
+    if(realTeamsInRound.length){
+      // Count how many of the user's predicted teams for this round are actually
+      // among the real teams that reached it (set comparison, not slot comparison)
+      var usedReal=realTeamsInRound.slice(); // to avoid double-counting duplicate picks
+      predTeamsInRound.forEach(function(tid){
+        var idx=usedReal.indexOf(tid);
+        if(idx>=0){ hits++; usedReal.splice(idx,1); }
+      });
+    }
+    bTotal+=hits*rd.pts;
+    roundResults[rd.key]={label:rd.label,hits:hits,max:rd.matchIds.length,pts:hits*rd.pts};
   });
   // Subcampeón: +8 if user's predicted finalist (the one who lost the final) matches real finalist
   var realChampion=br['m103'];
@@ -2053,6 +2064,25 @@ function renderBracket(uid,canEdit,realBracket){
   var bp=(S.quinelas[uid]&&S.quinelas[uid].bracket)||{};
   var rb=realBracket||null; // real results for comparison
 
+  // Precompute the set of real teams alive in each round (for "team alive" scoring display)
+  var realTeamsByRound={};
+  if(rb){
+    var roundMatchIds={
+      r8:['m73','m74','m75','m76','m77','m78','m79','m80','m81','m82','m83','m84','m85','m86','m87','m88'],
+      qf:['m89','m90','m91','m92','m93','m94','m95','m96'],
+      sf:['m97','m98','m99','m100']
+    };
+    Object.keys(roundMatchIds).forEach(function(key){
+      realTeamsByRound[key]=roundMatchIds[key].map(function(mid){return rb[mid];}).filter(Boolean);
+    });
+  }
+  function matchRoundKey(mid){
+    if(['m73','m74','m75','m76','m77','m78','m79','m80','m81','m82','m83','m84','m85','m86','m87','m88'].indexOf(mid)>=0) return 'r8';
+    if(['m89','m90','m91','m92','m93','m94','m95','m96'].indexOf(mid)>=0) return 'qf';
+    if(['m97','m98','m99','m100'].indexOf(mid)>=0) return 'sf';
+    return null;
+  }
+
   function getTeam(slot){
     var id=resolveSlot(slot,bp,uid);
     if(!id) return null;
@@ -2072,20 +2102,26 @@ function renderBracket(uid,canEdit,realBracket){
     var p=size==='sm'?'3px 5px':'5px 7px';
     var fs=size==='sm'?'10px':'11px';
     var mw=size==='sm'?'105px':'125px';
-    // Result comparison when in resultados mode
-    var realPick=rb?rb[m.id]:null;
-    var pickCorrect=rb&&myPick&&realPick&&myPick===realPick;
-    var pickWrong=rb&&myPick&&realPick&&myPick!==realPick;
+    // Result comparison: is the picked team actually alive in this round (set-based)?
+    var roundKey=matchRoundKey(m.id);
+    var realTeamsThisRound=roundKey?(realTeamsByRound[roundKey]||[]):[];
+    var hasRealData=rb&&realTeamsThisRound.length>0;
+    var pickCorrect=hasRealData&&myPick&&realTeamsThisRound.indexOf(myPick)>=0;
+    var pickWrong=hasRealData&&myPick&&realTeamsThisRound.indexOf(myPick)<0;
     var borderColor=pickCorrect?'rgba(0,200,83,.6)':pickWrong?'rgba(225,6,0,.4)':'';
 
     function makeRow(team,id,isW){
       var clickable=canEdit&&at&&bt&&!!id;
-      var isReal=rb&&id&&realPick===id;
       var rowClass='bt'+(isW?' winner':'')+((!team)?' tbd':'')+(clickable?' clickable':'');
-      var extraStyle=isReal&&rb?';border-left-color:'+(pickCorrect?'#00C853':'#E10600')+'!important':'';
       var onclick=clickable?' onclick="pickBracket(\''+uid+'\',\''+m.id+'\',\''+id+'\')"':'';
-      var inner=team?('<span style="font-size:'+(size==='sm'?'12px':'14px')+';line-height:1">'+team.f+'</span><span style="margin-left:3px">'+team.n+'</span>'+(isW&&!rb?'<span style="margin-left:auto;font-size:9px">✓</span>':isW&&pickCorrect?'<span style="margin-left:auto;font-size:9px;color:#00C853">+✓</span>':isW&&pickWrong?'<span style="margin-left:auto;font-size:9px;color:#ff6b6b">✗</span>':'')):'<span>Por definir</span>';
-      return '<div class="'+rowClass+'" style="padding:'+p+';font-size:'+fs+extraStyle+'"'+onclick+'>'+inner+'</div>';
+      var checkMark='';
+      if(isW){
+        if(!rb) checkMark='<span style="margin-left:auto;font-size:9px">✓</span>';
+        else if(pickCorrect) checkMark='<span style="margin-left:auto;font-size:9px;color:#00C853">+✓</span>';
+        else if(pickWrong) checkMark='<span style="margin-left:auto;font-size:9px;color:#ff6b6b">✗</span>';
+      }
+      var inner=team?('<span style="font-size:'+(size==='sm'?'12px':'14px')+';line-height:1">'+team.f+'</span><span style="margin-left:3px">'+team.n+'</span>'+checkMark):'<span>Por definir</span>';
+      return '<div class="'+rowClass+'" style="padding:'+p+';font-size:'+fs+'"'+onclick+'>'+inner+'</div>';
     }
 
     var borderStyle=borderColor?'border-color:'+borderColor+';':'';
@@ -3268,25 +3304,29 @@ function renderAdminAllQuinelas(){
     var bd=sc.breakdown;
     var bp=q.bracket||{};
 
-    // Pts per round
-    var roundPts={m73:1,m74:1,m75:1,m76:1,m77:1,m78:1,m79:1,m80:1,m81:1,m82:1,m83:1,m84:1,m85:1,m86:1,m87:1,m88:1,m89:2,m90:2,m91:2,m92:2,m93:2,m94:2,m95:2,m96:2,m97:4,m98:4,m99:4,m100:4,m101:8,m102:8};
-    var r32pts=0,r16pts=0,qfpts=0,sfpts=0;
-    R32IDs.forEach(function(mid){var c=br_real[mid];if(c&&bp[mid]===c) r32pts+=1;});
-    R16IDs.forEach(function(mid){var c=br_real[mid];if(c&&bp[mid]===c) r16pts+=2;});
-    QFIDS.forEach(function(mid){var c=br_real[mid];if(c&&bp[mid]===c) qfpts+=4;});
-    SFIDS.forEach(function(mid){var c=br_real[mid];if(c&&bp[mid]===c) sfpts+=8;});
-    var campeonPts=(br_real['m103']&&bp['m103']===br_real['m103'])?10:0;
-    var subcampeonPts=(bd.bracket&&bd.bracket.subcampeonPts)||0;
+    // Use the same set-based round results from calcScore (matches new "team alive" scoring)
+    var br=bd.bracket||{};
+    var rounds=br.rounds||{};
+    var r16pts=(rounds.r8&&rounds.r8.pts)||0;
+    var qfpts=(rounds.qf&&rounds.qf.pts)||0;
+    var sfpts=(rounds.sf&&rounds.sf.pts)||0;
+    var subcampeonPts=br.subcampeonPts||0;
+    var campeonPts=br.campeonPts||0;
     var userChampId=bp['m103'];
     var userSF1Id=bp['m101'], userSF2Id=bp['m102'];
     var userSubId=userChampId?(userChampId===userSF1Id?userSF2Id:userSF1Id):null;
 
+    // Precompute real teams alive per round (set-based, for teamChip highlighting)
+    var realTeamsR8=R32IDs.map(function(mid){return br_real[mid];}).filter(Boolean);
+    var realTeamsQF=R16IDs.map(function(mid){return br_real[mid];}).filter(Boolean);
+    var realTeamsSF=QFIDS.map(function(mid){return br_real[mid];}).filter(Boolean);
+
     // Color helpers
     function c(pts,max){var p=max?pts/max:0;return pts===0?'var(--text3)':p>=0.8?'#00C853':p>=0.5?'var(--gold)':'var(--text2)';}
-    function teamChip(id,realId){
+    function teamChip(id,isReal){
       if(!id) return '';
       var t=teamById(id);
-      var ok=realId&&id===realId;
+      var ok=!!isReal;
       return '<span style="display:inline-flex;align-items:center;gap:2px;padding:1px 5px;border-radius:3px;background:'+(ok?'rgba(0,200,83,.1)':'rgba(255,255,255,.04)')+';border:1px solid '+(ok?'rgba(0,200,83,.4)':'var(--border)')+';color:'+(ok?'#00C853':'var(--text2)')+';font-size:9px;white-space:nowrap">'+t.f+' '+t.n+(ok?' ✓':'')+'</span>';
     }
 
@@ -3314,7 +3354,7 @@ function renderAdminAllQuinelas(){
     h+='<span style="font-family:var(--fd);font-size:18px;color:'+c(bd.groups?bd.groups.pts:0,32)+'">'+( bd.groups?bd.groups.pts:0)+'</span>';
     h+='<span style="font-size:10px;color:var(--text3)">/ 32 pts</span></div>';
     h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:2px">';
-    avos16.forEach(function(id){h+=teamChip(id, r16actual.length&&r16actual.indexOf(id)>=0?id:null);});
+    avos16.forEach(function(id){h+=teamChip(id, r16actual.length&&r16actual.indexOf(id)>=0);});
     h+='</div></div>';
 
     // Octavos
@@ -3324,7 +3364,7 @@ function renderAdminAllQuinelas(){
     h+='<span style="font-family:var(--fd);font-size:18px;color:'+c(r16pts,32)+'">'+r16pts+'</span>';
     h+='<span style="font-size:10px;color:var(--text3)">/ 32 pts</span></div>';
     h+='<div style="display:flex;flex-wrap:wrap;gap:2px">';
-    R32IDs.forEach(function(mid){var id=bp[mid];if(id) h+=teamChip(id,br_real[mid]);});
+    R32IDs.forEach(function(mid){var id=bp[mid];if(id) h+=teamChip(id,realTeamsR8.indexOf(id)>=0);});
     h+='</div></div>';
 
     h+='</div>';
@@ -3337,7 +3377,7 @@ function renderAdminAllQuinelas(){
     h+='<span style="font-family:var(--fd);font-size:18px;color:'+c(qfpts,32)+'">'+qfpts+'</span>';
     h+='<span style="font-size:10px;color:var(--text3)">/ 32 pts</span></div>';
     h+='<div style="display:flex;flex-wrap:wrap;gap:2px">';
-    R16IDs.forEach(function(mid){var id=bp[mid];if(id) h+=teamChip(id,br_real[mid]);});
+    R16IDs.forEach(function(mid){var id=bp[mid];if(id) h+=teamChip(id,realTeamsQF.indexOf(id)>=0);});
     h+='</div></div>';
 
     // Semis
@@ -3347,7 +3387,7 @@ function renderAdminAllQuinelas(){
     h+='<span style="font-family:var(--fd);font-size:18px;color:'+c(sfpts,32)+'">'+sfpts+'</span>';
     h+='<span style="font-size:10px;color:var(--text3)">/ 32 pts</span></div>';
     h+='<div style="display:flex;flex-wrap:wrap;gap:2px">';
-    QFIDS.forEach(function(mid){var id=bp[mid];if(id) h+=teamChip(id,br_real[mid]);});
+    QFIDS.forEach(function(mid){var id=bp[mid];if(id) h+=teamChip(id,realTeamsSF.indexOf(id)>=0);});
     h+='</div></div>';
 
     h+='</div>';
