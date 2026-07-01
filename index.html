@@ -2439,38 +2439,43 @@ function populateSelect(id, options, value){
 }
 
 function renderAdminTab(){
-  renderPhaseControls();
-  renderGoalsTable();
-  renderPlayerGoals();
+  try{renderPhaseControls();}catch(e){console.error('renderPhaseControls',e);}
+  try{renderGoalsTable();}catch(e){console.error('renderGoalsTable',e);}
+  try{renderPlayerGoals();}catch(e){console.error('renderPlayerGoals',e);}
   // Populate add-scorer dropdown with full world players list
-  var nsSel=document.getElementById('new-scorer-name');
-  if(nsSel&&nsSel.options.length<=2){
-    var otroOption=nsSel.querySelector('option[value="__otro__"]');
-    WORLD_PLAYERS.forEach(function(p){
-      var o=document.createElement('option');
-      o.value=p;o.textContent=p;
-      nsSel.insertBefore(o,otroOption);
-    });
-    // Also add Spanish players not already in world list
-    ESP_PLAYERS.forEach(function(p){
-      if(!WORLD_PLAYERS.includes(p)){
+  try{
+    var nsSel=document.getElementById('new-scorer-name');
+    if(nsSel&&nsSel.options.length<=2){
+      var otroOption=nsSel.querySelector('option[value="__otro__"]');
+      WORLD_PLAYERS.forEach(function(p){
         var o=document.createElement('option');
         o.value=p;o.textContent=p;
         nsSel.insertBefore(o,otroOption);
-      }
-    });
-  }
-  renderUserList();
-  renderAdminAllQuinelas();
-  var sc=S.scorers||{};
-  populateSelect('top-scorer-name', WORLD_PLAYERS, (sc.world&&sc.world.name)||'');
-  populateSelect('esp-scorer-name', ESP_PLAYERS, (sc.spain&&sc.spain.name)||'');
-  populateSelect('mvp-name', MVP_PLAYERS, sc.mvp||'');
-  populateSelect('gk-name', GK_PLAYERS, sc.goalkeeper||'');
-  document.getElementById('admin-round-pills').innerHTML=
-    '<button class="round-pill '+(adminRound==='groups'?'active':'')+'" onclick="setAdminRound(\'groups\')">🏟️ Resultados de grupos</button>'+
-    '<button class="round-pill '+(adminRound==='bracket'?'active':'')+'" onclick="setAdminRound(\'bracket\')">🏆 Bracket eliminatorio</button>';
-  renderAdminResults();
+      });
+      ESP_PLAYERS.forEach(function(p){
+        if(!WORLD_PLAYERS.includes(p)){
+          var o=document.createElement('option');
+          o.value=p;o.textContent=p;
+          nsSel.insertBefore(o,otroOption);
+        }
+      });
+    }
+  }catch(e){console.error('populate scorer dropdown',e);}
+  try{renderUserList();}catch(e){console.error('renderUserList',e);}
+  try{renderAdminAllQuinelas();}catch(e){console.error('renderAdminAllQuinelas',e);}
+  try{
+    var sc=S.scorers||{};
+    populateSelect('top-scorer-name', WORLD_PLAYERS, (sc.world&&sc.world.name)||'');
+    populateSelect('esp-scorer-name', ESP_PLAYERS, (sc.spain&&sc.spain.name)||'');
+    populateSelect('mvp-name', MVP_PLAYERS, sc.mvp||'');
+    populateSelect('gk-name', GK_PLAYERS, sc.goalkeeper||'');
+  }catch(e){console.error('populateSelect scorers',e);}
+  try{
+    document.getElementById('admin-round-pills').innerHTML=
+      '<button class="round-pill '+(adminRound==='groups'?'active':'')+'" onclick="setAdminRound(\'groups\')">🏟️ Resultados de grupos</button>'+
+      '<button class="round-pill '+(adminRound==='bracket'?'active':'')+'" onclick="setAdminRound(\'bracket\')">🏆 Bracket eliminatorio</button>';
+    renderAdminResults();
+  }catch(e){console.error('renderAdminResults',e);}
 }
 
 function setAdminRound(r){adminRound=r;renderAdminResults();}
@@ -3102,10 +3107,11 @@ function renderGoalsTable(){
   }
   // Also update player goals for scoring
   syncPlayerGoalsFromTable();
-  renderDuplicateSuggestions();
-  renderUnmatchedPlayers();
 
-  wrap.innerHTML=h;
+  wrap.innerHTML=h; // set content first so admin isn't broken if something below fails
+
+  try{ renderDuplicateSuggestions(); } catch(e){ console.error('renderDuplicateSuggestions',e); }
+  try{ renderUnmatchedPlayers(); } catch(e){ console.error('renderUnmatchedPlayers',e); }
 }
 
 function handleNewScorerSelectChange(){
