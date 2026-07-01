@@ -1363,21 +1363,46 @@ function calcScore(uid){
   bd.bracket={pts:bTotal,subcampeonPts:subcampeonPts,campeonPts:campeonPts,rounds:roundResults};
   total+=bTotal;
 
-  // Scorers — fixed bug: was reading pg[eg] instead of pg[ep]
+  // Scorers — bonus splits equally if multiple players are tied for top scorer
   var sc=S.scorers||{};
-  var wp=(q.topScorer||'').toLowerCase().trim();
-  var ep=(q.espScorer||'').toLowerCase().trim();
+  var wp=normalizeName(q.topScorer||'');
+  var ep=normalizeName(q.espScorer||'');
   var pg=(sc.playerGoals)||{};
-  var wg=wp?(pg[wp]||0):0;
-  var eg=ep?(pg[ep]||0):0;
-  var wm=(sc.world&&sc.world.name||'').toLowerCase().trim();
-  var em=(sc.spain&&sc.spain.name||'').toLowerCase().trim();
-  var wb=(wm&&wp===wm)?10:0;
-  var eb=(em&&ep===em)?10:0;
+  var gt=sc.goalsTable||[];
+
+  // Find the maximum goals scored (world and spain separately)
+  var allGoals=gt.map(function(e){return e.goals||0;});
+  var maxWorldGoals=allGoals.length?Math.max.apply(null,allGoals):0;
+  var maxSpainGoals=0;
+  gt.filter(function(e){return e.nat==='esp';}).forEach(function(e){if((e.goals||0)>maxSpainGoals) maxSpainGoals=e.goals||0;});
+
+  // Count how many players are tied at the top (only count if >0 goals)
+  var worldTopScorers=maxWorldGoals>0?gt.filter(function(e){return (e.goals||0)===maxWorldGoals;}):[];
+  var spainTopScorers=maxSpainGoals>0?gt.filter(function(e){return e.nat==='esp'&&(e.goals||0)===maxSpainGoals;}):[];
+
+  // Bonus = 10 / number of tied top scorers, rounded to 1 decimal
+  var worldBonus=worldTopScorers.length>0?Math.round(10/worldTopScorers.length*10)/10:0;
+  var spainBonus=spainTopScorers.length>0?Math.round(10/spainTopScorers.length*10)/10:0;
+
+  // Check if user's pick is among the tied top scorers
+  var wpIsTopWorld=worldTopScorers.some(function(e){return normalizeName(e.name)===wp&&wp!=='';});
+  var epIsTopSpain=spainTopScorers.some(function(e){return normalizeName(e.name)===ep&&ep!=='';});
+
+  var wb=wpIsTopWorld?worldBonus:0;
+  var eb=epIsTopSpain?spainBonus:0;
+
+  // Goals scored by user's picked players (for +1/gol bonus)
+  var wg=wp?(pg[wp]||pg[(q.topScorer||'').toLowerCase().trim()]||0):0;
+  var eg=ep?(pg[ep]||pg[(q.espScorer||'').toLowerCase().trim()]||0):0;
+
+  // Update sc.world/spain to reflect who the actual top scorer(s) are
+  // (for display purposes — show all tied players or just the canonical name)
   var worldConfirmed=!!(sc.world&&sc.world.confirmed);
   var spainConfirmed=!!(sc.spain&&sc.spain.confirmed);
-  bd.topScorer={pts:wb+wg,bonus:wb,goals:wg,name:q.topScorer||'',provisional:!worldConfirmed};
-  bd.espScorer={pts:eb+eg,bonus:eb,goals:eg,name:q.espScorer||'',provisional:!spainConfirmed};
+  bd.topScorer={pts:wb+wg,bonus:wb,goals:wg,name:q.topScorer||'',provisional:!worldConfirmed,
+    tiedCount:worldTopScorers.length,maxGoals:maxWorldGoals};
+  bd.espScorer={pts:eb+eg,bonus:eb,goals:eg,name:q.espScorer||'',provisional:!spainConfirmed,
+    tiedCount:spainTopScorers.length,maxGoals:maxSpainGoals};
   total+=wb+wg+eb+eg;
 
   // MVP
@@ -3009,7 +3034,21 @@ function renderGoalsTable(){
     return;
   }
 
-  var h='<div style="overflow-x:auto"><table class="res-table" style="min-width:420px"><thead><tr>'
+  // Calculate tied top scorers for display
+  var maxGoalsAll=sorted.length&&sorted[0].goals>0?sorted[0].goals:0;
+  var maxGoalsEsp=0;
+  sorted.filter(function(e){return e.nat==='esp';}).forEach(function(e){if((e.goals||0)>maxGoalsEsp) maxGoalsEsp=e.goals||0;});
+  var tiedWorldCount=maxGoalsAll>0?sorted.filter(function(e){return e.goals===maxGoalsAll;}).length:0;
+  var tiedEspCount=maxGoalsEsp>0?sorted.filter(function(e){return e.nat==='esp'&&e.goals===maxGoalsEsp;}).length:0;
+
+  if(tiedWorldCount>1||tiedEspCount>1){
+    h+='<div style="font-size:11px;color:#ff9800;padding:6px 10px;background:rgba(255,152,0,.08);border:1px solid rgba(255,152,0,.3);border-radius:var(--r);margin-bottom:.5rem">';
+    if(tiedWorldCount>1) h+='⚠️ Empate mundial ('+tiedWorldCount+' jugadores, '+Math.round(10/tiedWorldCount*10)/10+' pts cada uno)  ';
+    if(tiedEspCount>1) h+='⚠️ Empate España ('+tiedEspCount+' jugadores, '+Math.round(10/tiedEspCount*10)/10+' pts cada uno)';
+    h+='</div>';
+  }
+
+  var h2='<div style="overflow-x:auto"><table class="res-table" style="min-width:420px"><thead><tr>'
     +'<th>#</th><th>Jugador</th><th style="text-align:center">Goles</th>'
     +'<th>Nac.</th><th>Elegido por</th><th></th>'
     +'</tr></thead><tbody>';
@@ -3017,22 +3056,25 @@ function renderGoalsTable(){
   sorted.forEach(function(entry,i){
     var eLow=normalizeName(entry.name);
     var pickers=pickersByPlayer[eLow]||[];
-    var isFirst=i===0;
-    h+='<tr style="'+(isFirst?'background:rgba(200,168,75,.05)':'')+'">';
-    h+='<td style="font-family:var(--fd);font-size:16px;color:'+(isFirst?'var(--gold)':'var(--text3)')+'">'+( isFirst?'👑':(i+1))+'</td>';
-    h+='<td style="font-weight:600;color:'+(isFirst?'var(--gold)':'var(--text)')+'">'+entry.name+'</td>';
-    h+='<td style="text-align:center">'
+    var isWorldTop=maxGoalsAll>0&&entry.goals===maxGoalsAll;
+    var isEspTop=maxGoalsEsp>0&&entry.nat==='esp'&&entry.goals===maxGoalsEsp;
+    var isTop=isWorldTop||isEspTop;
+    h2+='<tr style="'+(isTop?'background:rgba(200,168,75,.05)':'')+'">';
+    h2+='<td style="font-family:var(--fd);font-size:16px;color:'+(isTop?'var(--gold)':'var(--text3)')+'">'+( isTop?'👑':(i+1))+'</td>';
+    h2+='<td style="font-weight:600;color:'+(isTop?'var(--gold)':'var(--text)')+'">'+entry.name+'</td>';
+    h2+='<td style="text-align:center">'
       +'<div style="display:flex;align-items:center;justify-content:center;gap:4px">'
       +'<button onclick="updateGoalsEntry(\''+entry.name.replace(/'/g,"\\'")+'\',-1)" style="padding:2px 8px;background:transparent;border:1px solid var(--border);border-radius:3px;color:var(--text3);cursor:pointer;font-size:12px;line-height:1.4">−</button>'
       +'<span style="font-family:var(--fd);font-size:20px;color:'+(entry.goals>0?'var(--gold)':'var(--text3)')+';min-width:28px;text-align:center">'+entry.goals+'</span>'
       +'<button onclick="updateGoalsEntry(\''+entry.name.replace(/'/g,"\\'")+'\',1)" style="padding:2px 8px;background:transparent;border:1px solid var(--border);border-radius:3px;color:var(--text3);cursor:pointer;font-size:12px;line-height:1.4">+</button>'
       +'</div></td>';
-    h+='<td>'+(entry.nat==='esp'?'🇪🇸':'🌍')+'</td>';
-    h+='<td style="font-size:11px;color:'+(pickers.length?'var(--text2)':'var(--text3)')+'">'+( pickers.length?pickers.join(', '):'—')+'</td>';
-    h+='<td><button data-name="'+entry.name.replace(/"/g,'&quot;')+'" onclick="removeGoalsEntryBtn(this)" style="padding:2px 6px;background:transparent;border:1px solid rgba(225,6,0,.3);border-radius:3px;color:#E10600;cursor:pointer;font-size:11px">✕</button></td>';
-    h+='</tr>';
+    h2+='<td>'+(entry.nat==='esp'?'🇪🇸':'🌍')+'</td>';
+    h2+='<td style="font-size:11px;color:'+(pickers.length?'var(--text2)':'var(--text3)')+'">'+( pickers.length?pickers.join(', '):'—')+'</td>';
+    h2+='<td><button data-name="'+entry.name.replace(/"/g,'&quot;')+'" onclick="removeGoalsEntryBtn(this)" style="padding:2px 6px;background:transparent;border:1px solid rgba(225,6,0,.3);border-radius:3px;color:#E10600;cursor:pointer;font-size:11px">✕</button></td>';
+    h2+='</tr>';
   });
-  h+='</tbody></table></div>';
+  h2+='</tbody></table></div>';
+  h+=h2;
 
   // Auto-derive top scorers from table
   var worldTop=sorted[0]?sorted[0].name:'';
