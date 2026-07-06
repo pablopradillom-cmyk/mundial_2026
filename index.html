@@ -2958,19 +2958,31 @@ function applyGoalsPaste(){
   var nat=document.getElementById('goals-paste-nat').value;
   if(!S.scorers) S.scorers={};
   if(!S.scorers.goalsTable) S.scorers.goalsTable=[];
+  // First clean up any existing entries with number stuck to name
+  S.scorers.goalsTable=S.scorers.goalsTable.map(function(e){
+    var m=e.name.match(/^(.+?)(\d+)$/);
+    if(m&&m[1].trim()){ return {name:m[1].trim(),goals:parseInt(m[2])||e.goals,nat:e.nat}; }
+    return e;
+  });
   var lines=ta.value.split(/\r?\n/).map(function(l){return l.trim();}).filter(Boolean);
   var added=0,updated=0;
   lines.forEach(function(line){
-    // Split on tab first, fallback to last whitespace-separated number
+    // Split on tab first
     var parts=line.split('\t').map(function(p){return p.trim();}).filter(Boolean);
     var name,goals;
     if(parts.length>=2){
-      name=parts[0];
+      name=parts[0].trim();
       goals=parseInt(parts[parts.length-1])||0;
     } else {
+      // Try: name followed by space(s) then number at end
       var m=line.match(/^(.+?)\s+(\d+)\s*$/);
       if(m){ name=m[1].trim(); goals=parseInt(m[2])||0; }
-      else { name=line.trim(); goals=0; }
+      else {
+        // Try: number stuck to end of name without space e.g. "Lionel Messi6"
+        var m2=line.match(/^(.+?)(\d+)\s*$/);
+        if(m2){ name=m2[1].trim(); goals=parseInt(m2[2])||0; }
+        else { name=line.trim(); goals=0; }
+      }
     }
     if(!name) return;
     var existing=S.scorers.goalsTable.filter(function(e){return e.name.toLowerCase()===name.toLowerCase();})[0];
@@ -3016,6 +3028,19 @@ function renderUnmatchedPlayers(){
 function renderGoalsTable(){
   var wrap=document.getElementById('goals-table-wrap');
   if(!wrap) return;
+  // Auto-fix entries where number got stuck to name (e.g. "Lionel Messi6" → name:"Lionel Messi", goals:6)
+  var needsSave=false;
+  if(S.scorers&&S.scorers.goalsTable){
+    S.scorers.goalsTable=S.scorers.goalsTable.map(function(e){
+      var m=e.name.match(/^(.+?)(\d+)$/);
+      if(m&&m[1].trim()&&(e.goals===0||e.goals===undefined)){
+        needsSave=true;
+        return {name:m[1].trim(),goals:parseInt(m[2])||0,nat:e.nat};
+      }
+      return e;
+    });
+    if(needsSave) saveAdminState(null);
+  }
   var gt=(S.scorers&&S.scorers.goalsTable)||[];
   // Sort by goals desc — first is max scorer
   var sorted=gt.slice().sort(function(a,b){return b.goals-a.goals;});
