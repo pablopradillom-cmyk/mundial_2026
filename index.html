@@ -303,14 +303,6 @@ body{background:var(--black);color:var(--text);font-family:var(--fb);}
     <div class="card">
       <div class="section-title">⚽ Goleadores</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem">
-        <div><div class="admin-label">⚽ Máximo goleador mundial</div>
-          <select id="top-scorer-name" style="width:100%;padding:6px 10px;background:var(--dark3);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:13px">
-            <option value="">— Elige jugador —</option>
-          </select></div>
-        <div><div class="admin-label">🇪🇸 Máximo goleador español</div>
-          <select id="esp-scorer-name" style="width:100%;padding:6px 10px;background:var(--dark3);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:13px">
-            <option value="">— Elige jugador —</option>
-          </select></div>
         <div><div class="admin-label">🏅 MVP del torneo</div>
           <select id="mvp-name" style="width:100%;padding:6px 10px;background:var(--dark3);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:13px">
             <option value="">— Elige jugador —</option>
@@ -320,7 +312,7 @@ body{background:var(--black);color:var(--text);font-family:var(--fb);}
             <option value="">— Elige portero —</option>
           </select></div>
       </div>
-      <div class="admin-label" style="margin-bottom:.5rem">Tabla de goleadores del Mundial — el primero de la lista es el máximo goleador</div>
+      <div class="admin-label" style="margin-bottom:.5rem">Tabla de goleadores — el jugador con más goles es automáticamente el máximo goleador (mundial y español por separado)</div>
       <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;padding:8px 12px;background:var(--dark2);border:1px solid var(--border2);border-radius:var(--r)">
         <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
           <input type="checkbox" id="confirm-world-scorer" onchange="toggleScorerConfirmed('world',this.checked)">
@@ -329,6 +321,10 @@ body{background:var(--black);color:var(--text);font-family:var(--fb);}
         <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
           <input type="checkbox" id="confirm-esp-scorer" onchange="toggleScorerConfirmed('esp',this.checked)">
           🇪🇸 Goleador España definitivo (no provisional)
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
+          <input type="checkbox" id="round-tied-bonus" onchange="toggleRoundTiedBonus(this.checked)">
+          🔢 Redondear bonus en caso de empate (ej: 10/3 = 3 en vez de 3.33)
         </label>
       </div>
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:1rem;flex-wrap:wrap">
@@ -1380,9 +1376,16 @@ function calcScore(uid){
   var worldTopScorers=maxWorldGoals>0?gt.filter(function(e){return (e.goals||0)===maxWorldGoals;}):[];
   var spainTopScorers=maxSpainGoals>0?gt.filter(function(e){return e.nat==='esp'&&(e.goals||0)===maxSpainGoals;}):[];
 
-  // Bonus = 10 / number of tied top scorers, rounded to 1 decimal
-  var worldBonus=worldTopScorers.length>0?Math.round(10/worldTopScorers.length*10)/10:0;
-  var spainBonus=spainTopScorers.length>0?Math.round(10/spainTopScorers.length*10)/10:0;
+  // Bonus = 10 / number of tied top scorers
+  // If roundTiedBonus is on: round down to integer (e.g. 10/3 = 3)
+  // If off: 1 decimal (e.g. 10/3 = 3.33)
+  var doRound=!!(sc.roundTiedBonus);
+  var worldBonus=worldTopScorers.length>0
+    ? (doRound ? Math.floor(10/worldTopScorers.length) : Math.round(10/worldTopScorers.length*100)/100)
+    : 0;
+  var spainBonus=spainTopScorers.length>0
+    ? (doRound ? Math.floor(10/spainTopScorers.length) : Math.round(10/spainTopScorers.length*100)/100)
+    : 0;
 
   // Check if user's pick is among the tied top scorers
   var wpIsTopWorld=worldTopScorers.some(function(e){return normalizeName(e.name)===wp&&wp!=='';});
@@ -2465,8 +2468,6 @@ function renderAdminTab(){
   try{renderAdminAllQuinelas();}catch(e){console.error('renderAdminAllQuinelas',e);}
   try{
     var sc=S.scorers||{};
-    populateSelect('top-scorer-name', WORLD_PLAYERS, (sc.world&&sc.world.name)||'');
-    populateSelect('esp-scorer-name', ESP_PLAYERS, (sc.spain&&sc.spain.name)||'');
     populateSelect('mvp-name', MVP_PLAYERS, sc.mvp||'');
     populateSelect('gk-name', GK_PLAYERS, sc.goalkeeper||'');
   }catch(e){console.error('populateSelect scorers',e);}
@@ -3046,10 +3047,13 @@ function renderGoalsTable(){
   var tiedWorldCount=maxGoalsAll>0?sorted.filter(function(e){return e.goals===maxGoalsAll;}).length:0;
   var tiedEspCount=maxGoalsEsp>0?sorted.filter(function(e){return e.nat==='esp'&&e.goals===maxGoalsEsp;}).length:0;
 
+  var doRoundDisplay=!!(S.scorers&&S.scorers.roundTiedBonus);
+  function calcTiedBonus(n){ return doRoundDisplay ? Math.floor(10/n) : Math.round(10/n*100)/100; }
+
   if(tiedWorldCount>1||tiedEspCount>1){
     h+='<div style="font-size:11px;color:#ff9800;padding:6px 10px;background:rgba(255,152,0,.08);border:1px solid rgba(255,152,0,.3);border-radius:var(--r);margin-bottom:.5rem">';
-    if(tiedWorldCount>1) h+='⚠️ Empate mundial ('+tiedWorldCount+' jugadores, '+Math.round(10/tiedWorldCount*10)/10+' pts cada uno)  ';
-    if(tiedEspCount>1) h+='⚠️ Empate España ('+tiedEspCount+' jugadores, '+Math.round(10/tiedEspCount*10)/10+' pts cada uno)';
+    if(tiedWorldCount>1) h+='⚠️ Empate mundial ('+tiedWorldCount+' jugadores, '+calcTiedBonus(tiedWorldCount)+' pts cada uno)  ';
+    if(tiedEspCount>1) h+='⚠️ Empate España ('+tiedEspCount+' jugadores, '+calcTiedBonus(tiedEspCount)+' pts cada uno)';
     h+='</div>';
   }
 
@@ -3093,18 +3097,10 @@ function renderGoalsTable(){
   var ceEl=document.getElementById('confirm-esp-scorer');
   if(cwEl) cwEl.checked=S.scorers.world.confirmed;
   if(ceEl) ceEl.checked=S.scorers.spain.confirmed;
+  var rtEl=document.getElementById('round-tied-bonus');
+  if(rtEl) rtEl.checked=!!(S.scorers&&S.scorers.roundTiedBonus);
   // Update selects if they exist
-  var ws=document.getElementById('top-scorer-name');
-  var es=document.getElementById('esp-scorer-name');
-  if(ws&&worldTop){
-    // Try to set value, if not in list just note it
-    ws.value=worldTop;
-    if(!ws.value) ws.value=''; // not in list
-  }
-  if(es&&espTop){
-    es.value=espTop;
-    if(!es.value) es.value='';
-  }
+  // world/spain top scorer auto-set from goalsTable (no manual select needed)
   // Also update player goals for scoring
   syncPlayerGoalsFromTable();
 
@@ -3205,6 +3201,12 @@ function renderPlayerGoals(){
   }).join('');
 }
 
+function toggleRoundTiedBonus(checked){
+  if(!S.scorers) S.scorers={};
+  S.scorers.roundTiedBonus=checked;
+  saveAdminState(null);
+}
+
 function toggleScorerConfirmed(which,checked){
   if(!S.scorers) S.scorers={};
   if(which==='world'){
@@ -3219,8 +3221,9 @@ function toggleScorerConfirmed(which,checked){
 
 function saveScorers(){
   if(!S.scorers) S.scorers={};
-  S.scorers.world={name:document.getElementById('top-scorer-name').value.trim(),confirmed:(S.scorers.world&&S.scorers.world.confirmed)||false};
-  S.scorers.spain={name:document.getElementById('esp-scorer-name').value.trim(),confirmed:(S.scorers.spain&&S.scorers.spain.confirmed)||false};
+  // world/spain auto-derived from goalsTable in renderGoalsTable, preserve confirmed flag
+  if(!S.scorers.world) S.scorers.world={name:'',confirmed:false};
+  if(!S.scorers.spain) S.scorers.spain={name:'',confirmed:false};
   S.scorers.mvp=document.getElementById('mvp-name').value.trim();
   S.scorers.goalkeeper=document.getElementById('gk-name').value.trim();
   syncPlayerGoalsFromTable();
