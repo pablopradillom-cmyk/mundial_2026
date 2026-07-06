@@ -1395,8 +1395,8 @@ function calcScore(uid){
   var eb=epIsTopSpain?spainBonus:0;
 
   // Goals scored by user's picked players (for +1/gol bonus)
-  var wg=wp?(pg[wp]||pg[(q.topScorer||'').toLowerCase().trim()]||0):0;
-  var eg=ep?(pg[ep]||pg[(q.espScorer||'').toLowerCase().trim()]||0):0;
+  var wg=wp?(pg[wp]||0):0;
+  var eg=ep?(pg[ep]||0):0;
 
   // Update sc.world/spain to reflect who the actual top scorer(s) are
   // (for display purposes — show all tied players or just the canonical name)
@@ -3173,12 +3173,12 @@ function removeGoalsEntry(name){
 }
 
 function syncPlayerGoalsFromTable(){
-  // Keep playerGoals in sync with the goals table
   if(!S.scorers) S.scorers={};
   S.scorers.playerGoals={};
   var gt=S.scorers.goalsTable||[];
   gt.forEach(function(e){
-    S.scorers.playerGoals[e.name.toLowerCase().trim()]=e.goals;
+    // Use normalizeName so it matches how calcScore looks up goals
+    S.scorers.playerGoals[normalizeName(e.name)]=e.goals;
   });
 }
 
