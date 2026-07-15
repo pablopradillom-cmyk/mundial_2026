@@ -1316,7 +1316,8 @@ function calcScore(uid){
   var roundDefs=[
     {key:'r8', label:'Octavos',matchIds:['m73','m74','m75','m76','m77','m78','m79','m80','m81','m82','m83','m84','m85','m86','m87','m88'],pts:2,max:16},
     {key:'qf', label:'Cuartos',matchIds:['m89','m90','m91','m92','m93','m94','m95','m96'],pts:4,max:8},
-    {key:'sf', label:'Semis',matchIds:['m97','m98','m99','m100'],pts:8,max:4}
+    {key:'sf', label:'Semis',matchIds:['m97','m98','m99','m100'],pts:8,max:4},
+    {key:'fin',label:'Finalistas',matchIds:['m101','m102'],pts:8,max:2}
   ];
   var bTotal=0;
   var roundResults={};
@@ -1847,7 +1848,7 @@ function renderStandings(){
   h+='<th>#</th><th>Jugador</th>';
   h+='<th>⚽ Gol. Mundial</th><th>🇪🇸 Gol. España</th><th>🏅 MVP</th><th>🧤 Portero</th>';
   h+='<th style="text-align:center">16avos</th>';
-  h+='<th style="text-align:center">Octavos</th><th style="text-align:center">Cuartos</th><th style="text-align:center">Semis</th><th style="text-align:center">Campeón<br><span style="font-size:9px;color:var(--text3);font-weight:400">+2 extra</span></th>';
+  h+='<th style="text-align:center">Octavos</th><th style="text-align:center">Cuartos</th><th style="text-align:center">Semis</th><th style="text-align:center">Finalistas</th><th style="text-align:center">Campeón<br><span style="font-size:9px;color:var(--text3);font-weight:400">+2 extra</span></th>';
   h+='<th style="text-align:right">Total</th>';
   h+='</tr></thead><tbody>';
 
@@ -1903,6 +1904,7 @@ function renderStandings(){
     h+='<td style="text-align:center">'+roundCell(rounds.r8)+'</td>';
     h+='<td style="text-align:center">'+roundCell(rounds.qf)+'</td>';
     h+='<td style="text-align:center">'+roundCell(rounds.sf)+'</td>';
+    h+='<td style="text-align:center">'+roundCell(rounds.fin)+'</td>';
 
     // Campeón (+2 extra si aciertas quién gana la final)
     var fin=rounds.final||{campeonPts:0};
@@ -3375,7 +3377,7 @@ function renderAdminAllQuinelas(){
     var rounds=br.rounds||{};
     var r16pts=(rounds.r8&&rounds.r8.pts)||0;
     var qfpts=(rounds.qf&&rounds.qf.pts)||0;
-    var sfpts=(rounds.sf&&rounds.sf.pts)||0;
+    var sfpts=((rounds.sf&&rounds.sf.pts)||0)+((rounds.fin&&rounds.fin.pts)||0);
     var subcampeonPts=br.subcampeonPts||0;
     var campeonPts=br.campeonPts||0;
     var userChampId=bp['m103'];
@@ -3386,6 +3388,7 @@ function renderAdminAllQuinelas(){
     var realTeamsR8=R32IDs.map(function(mid){return br_real[mid];}).filter(Boolean);
     var realTeamsQF=R16IDs.map(function(mid){return br_real[mid];}).filter(Boolean);
     var realTeamsSF=QFIDS.map(function(mid){return br_real[mid];}).filter(Boolean);
+    var realTeamsFin=SFIDS.map(function(mid){return br_real[mid];}).filter(Boolean);
 
     // Color helpers
     function c(pts,max){var p=max?pts/max:0;return pts===0?'var(--text3)':p>=0.8?'#00C853':p>=0.5?'var(--gold)':'var(--text2)';}
@@ -3449,11 +3452,12 @@ function renderAdminAllQuinelas(){
     // Semis
     h+='<div style="padding:10px 12px;border-bottom:1px solid var(--border)">';
     h+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">';
-    h+='<span style="font-family:var(--fd);font-size:13px;letter-spacing:.5px">SEMIS</span>';
-    h+='<span style="font-family:var(--fd);font-size:18px;color:'+c(sfpts,32)+'">'+sfpts+'</span>';
-    h+='<span style="font-size:10px;color:var(--text3)">/ 32 pts</span></div>';
+    h+='<span style="font-family:var(--fd);font-size:13px;letter-spacing:.5px">SEMIS + FINALISTAS</span>';
+    h+='<span style="font-family:var(--fd);font-size:18px;color:'+c(sfpts,48)+'">'+sfpts+'</span>';
+    h+='<span style="font-size:10px;color:var(--text3)">/ 48 pts</span></div>';
     h+='<div style="display:flex;flex-wrap:wrap;gap:2px">';
     QFIDS.forEach(function(mid){var id=bp[mid];if(id) h+=teamChip(id,realTeamsSF.indexOf(id)>=0);});
+    SFIDS.forEach(function(mid){var id=bp[mid];if(id) h+=teamChip(id,realTeamsFin.indexOf(id)>=0);});
     h+='</div></div>';
 
     h+='</div>';
